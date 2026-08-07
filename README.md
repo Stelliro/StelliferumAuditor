@@ -210,6 +210,7 @@ Work planned after the **1.0.0** baseline. Issues hold the full write-ups; this 
 | **Todo** | **Mod containers & mod-function loot params by tier** — Detect containers/storage from different mods; set per-mod loot parameters (nominal/min/restock/lifetime, cargo/spawnables, usage/values) that can differ by economy tier; apply via audit/export. | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) |
 | **Todo** | **UI overhaul** — Cleaner daily workflow UI: navigation, large item/issue tables (filter/search), swarm + FTP status, safer empty states / pre-upload guards, layout polish for 1080p/1440p. | [#2](https://github.com/Stelliro/StelliferumAuditor/issues/2) |
 | **Todo** | **Better loot & shop configuration** — First-class loot policy editing (tiers, categories, mod overrides, audit explanations) plus stronger shop/trader setup (stock, pricing, categories, currencies, previews/diffs) across supported trader formats. | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) |
+| **Todo** | **Standalone FTP tool** — Separate lightweight FTP/SFTP utility (CLI and/or small UI) for download/upload/sync of mission and profile files without launching the full Auditor; shared `ftp.ini` / path config, smart sync, dry-run, clear errors. | [#4](https://github.com/Stelliro/StelliferumAuditor/issues/4) |
 
 ### Notes on the above
 
@@ -218,6 +219,8 @@ Work planned after the **1.0.0** baseline. Issues hold the full write-ups; this 
 **UI.** Scale and clarity for multi-thousand classname economies: find items, understand pipeline state, and export/upload without digging.
 
 **Loot & shops.** Economy and market should be configured in-app (or via clear config) with previews, not only post-hoc hand edits of exported shop files.
+
+**Standalone FTP.** Pull or push server files on demand without running the whole economy pipeline—same credentials model as the Auditor, focused transfer UX.
 
 ---
 
