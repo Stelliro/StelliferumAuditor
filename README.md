@@ -187,7 +187,7 @@ See the [example catalog](examples/items/README.md) for a full classname grid fr
 | [rlImGui](https://github.com/raylib-extras/rlImGui) | raylib backend for ImGui |
 | [WinSCP](https://winscp.net/) | SFTP/FTP scripting (portable binary, local) |
 
-More build detail: [docs/BUILD.md](docs/BUILD.md). System design: [docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md).
+More build detail: [docs/BUILD.md](docs/BUILD.md). System design: [docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md). Backlog: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
