@@ -818,16 +818,20 @@ int cli_run_simple_command(int argc, char **argv) {
         return cli_run_shell();
     }
 
+    /* help needs a real console so text is visible when launched via sfa.cmd */
+    if (util_strcasecmp(verb, "help") == 0) {
+        util_setup_console();
+        paths_load(&paths);
+        recipes_load();
+        cli_print_simple_help();
+        return 0;
+    }
+
     if (quiet) util_setup_console_quiet();
     else util_setup_console();
 
     paths_load(&paths);
     recipes_load();
-
-    if (util_strcasecmp(verb, "help") == 0) {
-        cli_print_simple_help();
-        return 0;
-    }
     if (util_strcasecmp(verb, "list") == 0) {
         const char *path = (argc >= 3 && argv[2][0] != '-') ? argv[2] : NULL;
         char expanded[MAX_PATH_LEN];
