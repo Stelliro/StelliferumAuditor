@@ -76,10 +76,15 @@ void loot_policy_init_defaults(void) {
     memset(&g_loot_policy, 0, sizeof(g_loot_policy));
 
     static const char *names[] = {
-        "Scavenger", "Survivor", "Constable", "Outdoorsman", "Insurgent",
-        "Infantry", "Spec-Ops", "Operator", "Mythic", "Elite",
+        "Coast Scav", "Town Survivor", "Constable", "Outdoorsman", "Insurgent",
+        "Infantry", "Spec Ops", "Operator", "Elite", "Mythic",
         "Black Market", "Contraband"
     };
+    /* Soft defaults match config/loot_policy.ini distribution hints */
+    static const int nom[]  = { 45, 28, 18, 14, 12, 8, 5, 3, 2, 1, 0, 0 };
+    static const int mins[] = { 28, 16, 10,  8,  6, 4, 2, 1, 1, 0, 0, 0 };
+    static const int life[] = { 3600, 5400, 7200, 9000, 10800, 14400, 18000, 21600, 28800, 36000, 86400, 86400 };
+    static const int rest[] = { 0, 300, 600, 600, 900, 1800, 1800, 3600, 3600, 7200, 0, 0 };
     int n = (int)(sizeof(names) / sizeof(names[0])); // 12
 
     g_loot_policy.tier_count = n;
@@ -88,6 +93,10 @@ void loot_policy_init_defaults(void) {
         g_loot_policy.tiers[i].spawns       = true;
         g_loot_policy.tiers[i].tradeable    = true;
         g_loot_policy.tiers[i].black_market = false;
+        g_loot_policy.tiers[i].nominal_target  = nom[i];
+        g_loot_policy.tiers[i].min_target      = mins[i];
+        g_loot_policy.tiers[i].lifetime_target = life[i];
+        g_loot_policy.tiers[i].restock_target  = rest[i];
     }
 
     // T11 "Black Market" — no world spawn; purchasable at BM in Bitcoin.
@@ -97,11 +106,12 @@ void loot_policy_init_defaults(void) {
     g_loot_policy.tiers[11].spawns    = false;
     g_loot_policy.tiers[11].tradeable = false;
 
-    g_loot_policy.contraband_tier        = 12;
-    g_loot_policy.bitcoin_spawn_min_tier = 3;
-    g_loot_policy.bitcoin_spawn_max_tier = 11;
-    g_loot_policy.blacklist_count        = 0;
-    g_loot_policy.loaded                 = true;
+    g_loot_policy.contraband_tier          = 12;
+    g_loot_policy.bitcoin_spawn_min_tier   = 4;
+    g_loot_policy.bitcoin_spawn_max_tier   = 10;
+    g_loot_policy.blacklist_count          = 0;
+    g_loot_policy.has_distribution_targets = true;
+    g_loot_policy.loaded                   = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +128,7 @@ bool loot_policy_load(const char *path) {
     char *v_black = (char *)calloc(1, 65536);
     char *line    = (char *)malloc(65536);
     char v_nospawn[512] = {0}, v_notrade[512] = {0}, v_bm[512] = {0};
+    char v_nominal[512] = {0}, v_min[512] = {0}, v_life[512] = {0}, v_restock[512] = {0};
     int  v_contra = -1, v_btcmin = -1, v_btcmax = -1;
 
     if (!v_names || !v_black || !line) {
@@ -145,6 +156,10 @@ bool loot_policy_load(const char *path) {
         else if (lp_ieq(key, "CONTRABAND_TIER"))   v_contra = atoi(val);
         else if (lp_ieq(key, "BITCOIN_SPAWN_MIN")) v_btcmin = atoi(val);
         else if (lp_ieq(key, "BITCOIN_SPAWN_MAX")) v_btcmax = atoi(val);
+        else if (lp_ieq(key, "NOMINAL_TARGETS"))   strncpy(v_nominal, val, sizeof(v_nominal) - 1);
+        else if (lp_ieq(key, "MIN_TARGETS"))       strncpy(v_min, val, sizeof(v_min) - 1);
+        else if (lp_ieq(key, "LIFETIME_TARGETS"))  strncpy(v_life, val, sizeof(v_life) - 1);
+        else if (lp_ieq(key, "RESTOCK_TARGETS"))   strncpy(v_restock, val, sizeof(v_restock) - 1);
         else if (lp_ieq(key, "BLACKLIST")) {
             if (val[0]) {
                 size_t used = strlen(v_black);
@@ -161,12 +176,27 @@ bool loot_policy_load(const char *path) {
         char nametoks[LP_MAX_TIERS][LP_MAX_NAME_LEN];
         int cnt = lp_split(v_names, nametoks, LP_MAX_TIERS);
         if (cnt > 0) {
+            LpTier old[LP_MAX_TIERS];
+            int old_n = g_loot_policy.tier_count;
+            memcpy(old, g_loot_policy.tiers, sizeof(old));
             memset(g_loot_policy.tiers, 0, sizeof(g_loot_policy.tiers));
             for (int i = 0; i < cnt; i++) {
                 strncpy(g_loot_policy.tiers[i].name, nametoks[i], LP_MAX_TIER_NAME - 1);
                 g_loot_policy.tiers[i].spawns       = true;
                 g_loot_policy.tiers[i].tradeable    = true;
                 g_loot_policy.tiers[i].black_market = false;
+                /* Keep prior distribution targets when renaming same-index tiers */
+                if (i < old_n) {
+                    g_loot_policy.tiers[i].nominal_target  = old[i].nominal_target;
+                    g_loot_policy.tiers[i].min_target      = old[i].min_target;
+                    g_loot_policy.tiers[i].lifetime_target = old[i].lifetime_target;
+                    g_loot_policy.tiers[i].restock_target  = old[i].restock_target;
+                } else {
+                    g_loot_policy.tiers[i].nominal_target  = -1;
+                    g_loot_policy.tiers[i].min_target      = -1;
+                    g_loot_policy.tiers[i].lifetime_target = -1;
+                    g_loot_policy.tiers[i].restock_target  = -1;
+                }
             }
             g_loot_policy.tier_count = cnt;
         }
@@ -180,6 +210,36 @@ bool loot_policy_load(const char *path) {
     if (v_btcmin >= 0) g_loot_policy.bitcoin_spawn_min_tier = v_btcmin;
     if (v_btcmax >= 0) g_loot_policy.bitcoin_spawn_max_tier = v_btcmax;
 
+    /* Distribution target lists (optional) */
+    {
+        char toks[LP_MAX_TIERS][LP_MAX_NAME_LEN];
+        int n, i;
+        if (v_nominal[0]) {
+            n = lp_split(v_nominal, toks, LP_MAX_TIERS);
+            for (i = 0; i < n && i < g_loot_policy.tier_count; i++)
+                g_loot_policy.tiers[i].nominal_target = atoi(toks[i]);
+            g_loot_policy.has_distribution_targets = true;
+        }
+        if (v_min[0]) {
+            n = lp_split(v_min, toks, LP_MAX_TIERS);
+            for (i = 0; i < n && i < g_loot_policy.tier_count; i++)
+                g_loot_policy.tiers[i].min_target = atoi(toks[i]);
+            g_loot_policy.has_distribution_targets = true;
+        }
+        if (v_life[0]) {
+            n = lp_split(v_life, toks, LP_MAX_TIERS);
+            for (i = 0; i < n && i < g_loot_policy.tier_count; i++)
+                g_loot_policy.tiers[i].lifetime_target = atoi(toks[i]);
+            g_loot_policy.has_distribution_targets = true;
+        }
+        if (v_restock[0]) {
+            n = lp_split(v_restock, toks, LP_MAX_TIERS);
+            for (i = 0; i < n && i < g_loot_policy.tier_count; i++)
+                g_loot_policy.tiers[i].restock_target = atoi(toks[i]);
+            g_loot_policy.has_distribution_targets = true;
+        }
+    }
+
     if (v_black[0])
         g_loot_policy.blacklist_count =
             lp_split(v_black, g_loot_policy.blacklist, LP_MAX_BLACKLIST);
@@ -188,6 +248,41 @@ bool loot_policy_load(const char *path) {
     free(v_black);
     g_loot_policy.loaded = true;
     return true;
+}
+
+void lp_apply_distribution(int tier, int *nominal, int *min_val, int *lifetime, int *restock) {
+    LpTier *tr;
+    if (tier < 1 || tier > g_loot_policy.tier_count) return;
+    tr = &g_loot_policy.tiers[tier - 1];
+
+    if (!tr->spawns) {
+        if (nominal) *nominal = 0;
+        if (min_val) *min_val = 0;
+        if (lifetime && tr->lifetime_target > 0) *lifetime = tr->lifetime_target;
+        if (restock && tr->restock_target >= 0) *restock = tr->restock_target;
+        return;
+    }
+
+    if (!g_loot_policy.has_distribution_targets) return;
+
+    /* Soft blend: pull toward target without erasing item-specific rarity fully.
+     * new = (2*target + old) / 3  when old > 0; else use target. */
+    if (nominal && tr->nominal_target >= 0) {
+        if (*nominal <= 0) *nominal = tr->nominal_target;
+        else *nominal = (2 * tr->nominal_target + *nominal) / 3;
+    }
+    if (min_val && tr->min_target >= 0) {
+        if (*min_val <= 0) *min_val = tr->min_target;
+        else *min_val = (2 * tr->min_target + *min_val) / 3;
+        if (nominal && *min_val > *nominal) *min_val = (*nominal > 0) ? (*nominal * 2 / 3) : 0;
+    }
+    if (lifetime && tr->lifetime_target > 0) {
+        if (*lifetime <= 0) *lifetime = tr->lifetime_target;
+        else *lifetime = (2 * tr->lifetime_target + *lifetime) / 3;
+    }
+    if (restock && tr->restock_target >= 0) {
+        *restock = tr->restock_target;
+    }
 }
 
 static void lp_write_tier_number_list(FILE *f, int which) {

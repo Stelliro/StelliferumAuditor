@@ -28,10 +28,15 @@ extern "C" {
 #define LP_CONFIG_PATH     "config/loot_policy.ini"
 
 typedef struct {
-    char name[LP_MAX_TIER_NAME]; // display label, e.g. "Spec-Ops", "Black Market"
+    char name[LP_MAX_TIER_NAME]; // display label, e.g. "Spec Ops", "Black Market"
     bool spawns;                 // false -> nominal 0, no CE world spawn
     bool tradeable;              // false -> excluded from every trader (contraband)
     bool black_market;           // true  -> sold at the Black Market in Bitcoin
+    /* Optional distribution soft-targets (-1 = unset / do not force) */
+    int  nominal_target;
+    int  min_target;
+    int  lifetime_target;
+    int  restock_target;
 } LpTier;
 
 typedef struct {
@@ -42,6 +47,7 @@ typedef struct {
     int    contraband_tier;            // 1-based tier blacklisted items are forced into (0 = none)
     int    bitcoin_spawn_min_tier;     // Bitcoin world-spawn scaling range (0 = disabled)
     int    bitcoin_spawn_max_tier;
+    bool   has_distribution_targets;   // true if any NOMINAL/MIN/LIFETIME/RESTOCK list loaded
     bool   loaded;
 } LootPolicy;
 
@@ -66,6 +72,10 @@ bool        lp_tier_black_market(int tier);
 int         lp_black_market_tier(void);   // first tier flagged black_market, or 0
 int         lp_contraband_tier(void);
 bool        lp_is_blacklisted(const char *classname);
+
+/* Soft-apply distribution targets from policy for a 1-based tier.
+ * No-op if targets unset or tier invalid. Spawns=false forces nominal/min 0. */
+void        lp_apply_distribution(int tier, int *nominal, int *min_val, int *lifetime, int *restock);
 
 // Setters used by the in-app Loot Policy editor. CSV = comma-separated.
 // set_tiers preserves each tier's spawn/trade/black_market flags by index.

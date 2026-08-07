@@ -597,6 +597,22 @@ void auditor_fill_missing_data(AuditorContext *ctx) {
             item->lifetime = 7200;
             item->modified = true;
         }
+
+        /* Soft distribution from loot_policy.ini (NOMINAL/MIN/LIFETIME/RESTOCK targets) */
+        if (item->assigned_tier > 0) {
+            int nom = item->nominal;
+            int mn  = item->min;
+            int lt  = item->lifetime;
+            int rs  = item->restock;
+            lp_apply_distribution(item->assigned_tier, &nom, &mn, &lt, &rs);
+            if (nom != item->nominal || mn != item->min || lt != item->lifetime || rs != item->restock) {
+                item->nominal  = nom;
+                item->min      = mn;
+                item->lifetime = lt;
+                item->restock  = rs;
+                item->modified = true;
+            }
+        }
     }
 }
 
