@@ -84,21 +84,50 @@ build\bin\Release\StelliferumAuditor.exe
 ./build/bin/StelliferumAuditor
 ```
 
-### Simple headless commands (console + config)
+### Simple terminal (`sfa`) — no long build paths
 
-Short verbs for Alpine / scripts / ops (quiet by default — no focus-stealing windows):
+Use the **`sfa`** launcher at the project root (or next to a release binary). It finds a prebuilt `StelliferumAuditor` and runs simple commands — you do **not** type `./build-alpine/bin/...`.
+
+**Windows**
 
 ```text
-StelliferumAuditor help
-StelliferumAuditor list [path]
-StelliferumAuditor pull                 # recursive REMOTE_ROOT -> LOCAL_ROOT
-StelliferumAuditor pipeline             # local sort/parse/audit/export
-StelliferumAuditor push                 # upload standard output/ pack
-StelliferumAuditor restore              # newest backups/*/restore_manifest.txt
-StelliferumAuditor run <recipe>         # named recipe from config/commands.ini
+sfa              → interactive terminal (sfa> prompt)
+sfa help
+sfa pull
+sfa pipeline
+sfa push
+sfa run cycle
 ```
 
-Optional recipes: copy `config/commands.ini.example` → `config/commands.ini`. Use `${REMOTE_ROOT}`, `${REMOTE_TYPES}`, etc. from `server_paths.ini`. Pipeline rules stay in `config/loot_policy.ini`.
+**Linux / Alpine**
+
+```bash
+chmod +x sfa          # once
+./sfa                 # interactive
+./sfa help
+./sfa pull
+```
+
+Put a **prebuilt** binary as `StelliferumAuditor.exe` (Windows) or `StelliferumAuditor` (Linux) next to `sfa`, **or** leave a normal build in `build/bin/Release/` / `build-alpine/bin/` — `sfa` searches those automatically.
+
+Interactive example:
+
+```text
+sfa> help
+sfa> list
+sfa> pull
+sfa> pipeline
+sfa> push
+sfa> exit
+```
+
+### Simple commands (verbs + config recipes)
+
+```text
+help | list [path] | pull | pipeline | push | restore | run <recipe> | shell
+```
+
+Optional recipes: `config/commands.ini` (see `commands.ini.example`). Variables like `${REMOTE_ROOT}` come from `server_paths.ini`. Pipeline rules: `loot_policy.ini`.
 
 Long flags still work for advanced scripting:
 

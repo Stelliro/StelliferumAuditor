@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-/* Returns 1 if argv[1] is a simple verb (help/list/pull/pipeline/push/restore/run). */
+/* Returns 1 if argv[1] is a simple verb (help/list/pull/pipeline/push/restore/run/shell). */
 int cli_is_simple_command(int argc, char **argv);
 
 /*
@@ -14,6 +14,9 @@ int cli_is_simple_command(int argc, char **argv);
  * Returns process exit code (0 = success).
  */
 int cli_run_simple_command(int argc, char **argv);
+
+/* Interactive terminal: sfa / StelliferumAuditor shell — type verbs until exit. */
+int cli_run_shell(void);
 
 /* Print short help for simple verbs + recipe names. */
 void cli_print_simple_help(void);

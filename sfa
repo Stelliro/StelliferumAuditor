@@ -1,0 +1,42 @@
+#!/bin/sh
+# sfa — Stelliferum Auditor simple terminal launcher (Linux / Alpine / macOS)
+# Finds a prebuilt binary so you do not need a long build path.
+#
+# Usage:
+#   ./sfa              # interactive terminal
+#   ./sfa help
+#   ./sfa pull
+#   ./sfa pipeline
+#   ./sfa push
+#   ./sfa run cycle
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+cd "$ROOT" || exit 1
+
+EXE=""
+if [ -x "$ROOT/StelliferumAuditor" ]; then
+  EXE="$ROOT/StelliferumAuditor"
+elif [ -x "$ROOT/sfa.bin" ]; then
+  EXE="$ROOT/sfa.bin"
+elif [ -x "$ROOT/build-alpine/bin/StelliferumAuditor" ]; then
+  EXE="$ROOT/build-alpine/bin/StelliferumAuditor"
+elif [ -x "$ROOT/build/bin/StelliferumAuditor" ]; then
+  EXE="$ROOT/build/bin/StelliferumAuditor"
+elif [ -x "$ROOT/build/bin/Release/StelliferumAuditor" ]; then
+  EXE="$ROOT/build/bin/Release/StelliferumAuditor"
+fi
+
+if [ -z "$EXE" ]; then
+  echo "[sfa] No StelliferumAuditor binary found."
+  echo "      Place a prebuilt binary as ./StelliferumAuditor next to this script,"
+  echo "      or build once (Alpine example):"
+  echo "        cmake -S . -B build-alpine -G Ninja -DCMAKE_BUILD_TYPE=Release"
+  echo "        cmake --build build-alpine"
+  exit 1
+fi
+
+if [ "$#" -eq 0 ]; then
+  exec "$EXE" shell
+else
+  exec "$EXE" "$@"
+fi

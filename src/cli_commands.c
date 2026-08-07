@@ -615,11 +615,14 @@ void cli_print_simple_help(void) {
     if (!g_recipes_loaded) recipes_load();
 
     printf(
-        "StelliferumAuditor — simple headless commands\n"
+        "SFA — Stelliferum Auditor (simple terminal commands)\n"
         "\n"
-        "Usage:\n"
-        "  StelliferumAuditor <verb> [args]\n"
-        "  StelliferumAuditor run <recipe>\n"
+        "Launch:\n"
+        "  sfa                     Interactive terminal (type commands)\n"
+        "  sfa help | pull | push  One-shot command\n"
+        "  sfa shell               Same as interactive terminal\n"
+        "\n"
+        "  (sfa.cmd / sfa finds a prebuilt StelliferumAuditor binary — no rebuild required)\n"
         "\n"
         "Built-in verbs:\n"
         "  help                 Show this help\n"
@@ -629,21 +632,23 @@ void cli_print_simple_help(void) {
         "  push                 Upload standard output/ pack to server\n"
         "  restore              Recall newest backups/*/restore_manifest.txt\n"
         "  run <recipe>         Run a named recipe from config/commands.ini\n"
+        "  shell | console      Interactive command loop\n"
+        "  exit | quit          Leave interactive shell\n"
         "\n"
-        "Config:\n"
+        "Config (edit rules / paths without rebuilding):\n"
         "  config/ftp.ini            HOST PORT USER PASS\n"
         "  config/server_paths.ini   REMOTE_* LOCAL_ROOT paths\n"
         "  config/commands.ini       optional recipes (see commands.ini.example)\n"
         "  config/loot_policy.ini    tier / blacklist rules for pipeline\n"
         "\n"
         "Examples:\n"
-        "  StelliferumAuditor pull\n"
-        "  StelliferumAuditor pipeline\n"
-        "  StelliferumAuditor push\n"
-        "  StelliferumAuditor run types\n"
-        "  StelliferumAuditor run cycle\n"
+        "  sfa\n"
+        "  sfa> help\n"
+        "  sfa> pull\n"
+        "  sfa> pipeline\n"
+        "  sfa> push\n"
+        "  sfa run cycle\n"
         "\n"
-        "Long flags still work (--ftp-list, --regen, --headless, ...).\n"
     );
 
     if (g_recipe_count > 0) {
@@ -656,6 +661,111 @@ void cli_print_simple_help(void) {
     } else {
         printf("No config/commands.ini yet — copy config/commands.ini.example to add recipes.\n\n");
     }
+}
+
+/* Split a line into argv-style tokens (max 16). Returns argc. */
+static int split_line_argv(char *line, char **argv_out, int max_argv) {
+    int argc = 0;
+    char *p = line;
+    while (*p && argc < max_argv) {
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (!*p) break;
+        argv_out[argc++] = p;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        if (*p) { *p = '\0'; p++; }
+    }
+    return argc;
+}
+
+int cli_run_shell(void) {
+    CmdPaths paths;
+    char line[1024];
+
+    /* Visible console for interactive use (attach parent or show one). */
+    util_setup_console();
+    paths_load(&paths);
+    recipes_load();
+
+    printf("\n");
+    printf("SFA terminal — type a command, or 'help'. Type 'exit' to quit.\n");
+    printf("Working directory should be the project/release folder (config/ next to you).\n\n");
+
+    for (;;) {
+        char *argv_local[16];
+        int argc_local;
+        int rc;
+
+        printf("sfa> ");
+        fflush(stdout);
+        if (!fgets(line, sizeof(line), stdin)) {
+            printf("\n");
+            break;
+        }
+        str_trim_inplace(line);
+        if (line[0] == '\0') continue;
+
+        if (util_strcasecmp(line, "exit") == 0 || util_strcasecmp(line, "quit") == 0 ||
+            util_strcasecmp(line, "q") == 0) {
+            printf("bye\n");
+            break;
+        }
+
+        argc_local = split_line_argv(line, argv_local, 16);
+        if (argc_local <= 0) continue;
+
+        /* Fake argv[0] = sfa for run_recipe paths that expect argc/argv shape */
+        {
+            char *fake_argv[17];
+            int i;
+            fake_argv[0] = (char *)"sfa";
+            for (i = 0; i < argc_local; i++)
+                fake_argv[i + 1] = argv_local[i];
+            /* Reuse one-shot runner without re-init console */
+            if (util_strcasecmp(argv_local[0], "help") == 0) {
+                cli_print_simple_help();
+                continue;
+            }
+            if (util_strcasecmp(argv_local[0], "list") == 0) {
+                const char *path = (argc_local >= 2) ? argv_local[1] : NULL;
+                char expanded[MAX_PATH_LEN];
+                if (path) {
+                    expand_vars(&paths, path, expanded, sizeof(expanded));
+                    rc = action_list(&paths, expanded);
+                } else {
+                    rc = action_list(&paths, NULL);
+                }
+            } else if (util_strcasecmp(argv_local[0], "pull") == 0) {
+                if (argc_local >= 2 && util_strcasecmp(argv_local[1], "all") != 0)
+                    rc = run_recipe_by_name(&paths, argv_local[1], 0);
+                else
+                    rc = action_pull_all(&paths);
+            } else if (util_strcasecmp(argv_local[0], "pipeline") == 0 ||
+                       util_strcasecmp(argv_local[0], "regen") == 0) {
+                rc = action_pipeline();
+            } else if (util_strcasecmp(argv_local[0], "push") == 0) {
+                rc = action_push(&paths);
+            } else if (util_strcasecmp(argv_local[0], "restore") == 0) {
+                rc = action_restore();
+            } else if (util_strcasecmp(argv_local[0], "run") == 0) {
+                if (argc_local < 2) {
+                    printf("usage: run <recipe>\n");
+                    rc = 1;
+                } else {
+                    rc = run_recipe_by_name(&paths, argv_local[1], 0);
+                }
+            } else if (util_strcasecmp(argv_local[0], "shell") == 0 ||
+                       util_strcasecmp(argv_local[0], "console") == 0) {
+                printf("(already in shell)\n");
+                rc = 0;
+            } else {
+                rc = run_recipe_by_name(&paths, argv_local[0], 0);
+            }
+            if (rc != 0)
+                printf("[exit code %d]\n", rc);
+            (void)fake_argv;
+        }
+    }
+    return 0;
 }
 
 int cli_is_simple_command(int argc, char **argv) {
@@ -674,6 +784,9 @@ int cli_is_simple_command(int argc, char **argv) {
     if (util_strcasecmp(v, "push") == 0) return 1;
     if (util_strcasecmp(v, "restore") == 0) return 1;
     if (util_strcasecmp(v, "run") == 0) return 1;
+    if (util_strcasecmp(v, "shell") == 0) return 1;
+    if (util_strcasecmp(v, "console") == 0) return 1;
+    if (util_strcasecmp(v, "repl") == 0) return 1;
     /* bare recipe name */
     if (!g_recipes_loaded) recipes_load();
     if (recipe_find(v)) return 1;
@@ -692,17 +805,24 @@ int cli_run_simple_command(int argc, char **argv) {
         if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0)
             quiet = 1;
     }
+
+    if (argc < 2) {
+        return cli_run_shell();
+    }
+    verb = argv[1];
+
+    /* Interactive terminal — always want a real console */
+    if (util_strcasecmp(verb, "shell") == 0 ||
+        util_strcasecmp(verb, "console") == 0 ||
+        util_strcasecmp(verb, "repl") == 0) {
+        return cli_run_shell();
+    }
+
     if (quiet) util_setup_console_quiet();
     else util_setup_console();
 
     paths_load(&paths);
     recipes_load();
-
-    if (argc < 2) {
-        cli_print_simple_help();
-        return 1;
-    }
-    verb = argv[1];
 
     if (util_strcasecmp(verb, "help") == 0) {
         cli_print_simple_help();
