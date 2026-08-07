@@ -485,7 +485,8 @@ void util_close_job_object(void);                  // close job → kill all chi
 void util_init_context(AuditorContext *ctx);
 void util_init_logger(void);
 void util_close_logger(void);
-void util_setup_console(void);                     // headless only: AllocConsole + colors
+void util_setup_console(void);                     // CLI/headless: attach parent console if any
+void util_setup_console_quiet(void);               // CLI: no new window, no focus steal (log file only if no parent)
 void util_log(Severity level, const char *fmt, ...);
 int util_strcasecmp(const char *a, const char *b);
 bool util_str_contains_ci(const char *haystack, const char *needle);

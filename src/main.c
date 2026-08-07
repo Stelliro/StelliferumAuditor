@@ -694,15 +694,40 @@ headless_cleanup:
 // ============================================================================
 // Standalone transfer CLI (--ftp-download / --ftp-upload / --ftp-list)
 // Same binary, same config/ftp.ini + config/server_paths.ini as the GUI.
-// Headless: util_setup_console, no raylib ui_run. Credentials never on argv.
+// Headless: quiet console by default (no focus-stealing windows). Credentials never on argv.
 // ============================================================================
 
 typedef enum {
     FTP_CLI_NONE = 0,
     FTP_CLI_DOWNLOAD,
     FTP_CLI_UPLOAD,
-    FTP_CLI_LIST
+    FTP_CLI_LIST,
+    FTP_CLI_PUSH_ECONOMY
 } FtpCliMode;
+
+/* True if argv requests quiet CLI (default for --ftp-*; opt out with --verbose). */
+static int cli_wants_quiet(int argc, char **argv) {
+    int i;
+    int verbose = 0;
+    int force_quiet = 0;
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0)
+            verbose = 1;
+        if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0)
+            force_quiet = 1;
+    }
+    if (force_quiet) return 1;
+    if (verbose) return 0;
+    /* Default quiet for transfer CLI to avoid popping consoles per file. */
+    return 1;
+}
+
+static void cli_setup_console(int quiet) {
+    if (quiet)
+        util_setup_console_quiet();
+    else
+        util_setup_console();
+}
 
 static int path_ends_with_slash(const char *path) {
     size_t len;
@@ -744,36 +769,42 @@ static int local_path_is_directory(const char *path) {
 
 static void print_ftp_cli_usage(void) {
     printf(
-        "StelliferumAuditor — standalone FTP/SFTP transfer (same binary)\n"
+        "StelliferumAuditor - standalone FTP/SFTP transfer (same binary)\n"
         "\n"
         "Usage:\n"
         "  StelliferumAuditor --ftp-list [path] [--remote <path>] [--dry-run]\n"
         "  StelliferumAuditor --ftp-download [--remote <path>] [--local <path>] [--dry-run]\n"
         "  StelliferumAuditor --ftp-upload   [--remote <path>] [--local <path>] [--dry-run]\n"
+        "  StelliferumAuditor --ftp-push-economy [--dry-run]\n"
         "\n"
         "Options:\n"
         "  --ftp-list [path]   List remote directory (path optional; default REMOTE_ROOT)\n"
         "  --ftp-download      Download remote -> local (file or recursive directory)\n"
         "  --ftp-upload        Upload local -> remote (file or directory)\n"
+        "  --ftp-push-economy  Upload standard output/ economy pack in ONE process\n"
+        "                      (types, spawnables, trader, shops, env, SFL, ...)\n"
         "  --remote <path>     Remote path (default: REMOTE_ROOT from server_paths.ini)\n"
         "  --local <path>      Local path  (default: LOCAL_ROOT from server_paths.ini)\n"
         "  --dry-run           Print planned action; no network transfer\n"
+        "  --quiet, -q         No new console window (default for --ftp-*)\n"
+        "  --verbose, -v       Allow console attach/banner (still prefers parent TTY)\n"
         "  --ftp-export-login  Dump parsed HOST/PORT/USER/PASS (same loader as FTP) to\n"
         "                      config/ftp.login_export.txt for cross-check (gitignored)\n"
         "  --help, -h          Show this help\n"
         "\n"
         "Config (same as GUI):\n"
         "  config/ftp.ini           HOST, PORT, USER, PASS (+ host-key keys for native SFTP)\n"
-        "  config/server_paths.ini  REMOTE_ROOT, LOCAL_ROOT, …\n"
+        "  config/server_paths.ini  REMOTE_ROOT, LOCAL_ROOT, ...\n"
         "\n"
         "Notes:\n"
-        "  • Credentials are read only from config/ftp.ini — never pass passwords on argv.\n"
-        "  • Prefer native libcurl (FTP/SFTP). WinSCP is optional Windows fallback only.\n"
-        "  • Linux does not require WinSCP.\n"
-        "  • Port 22/2222/8827 => SFTP; other ports => FTP.\n"
+        "  * Credentials are read only from config/ftp.ini - never pass passwords on argv.\n"
+        "  * Prefer native libcurl (FTP/SFTP). WinSCP is optional Windows fallback only.\n"
+        "  * Linux does not require WinSCP.\n"
+        "  * Port 22/2222/8827 => SFTP; other ports => FTP.\n"
+        "  * CLI defaults to quiet consoles so multi-file scripts do not steal focus.\n"
         "\n"
         "Other CLI modes (unchanged):\n"
-        "  --headless              Full download → pipeline → upload\n"
+        "  --headless              Full download -> pipeline -> upload\n"
         "  --regen | --local       Local pipeline only (no FTP); --local alone is NOT --local <path>\n"
         "  --restore-last-upload   Restore newest pre-upload snapshot\n"
     );
@@ -786,10 +817,196 @@ static int cli_wants_ftp_mode(int argc, char **argv) {
         if (strcmp(argv[i], "--ftp-download") == 0 ||
             strcmp(argv[i], "--ftp-upload") == 0 ||
             strcmp(argv[i], "--ftp-list") == 0 ||
+            strcmp(argv[i], "--ftp-push-economy") == 0 ||
             strcmp(argv[i], "--ftp-help") == 0)
             return 1;
     }
     return 0;
+}
+
+/** Join remote root + relative path with single slash. */
+static void ftp_join_remote(char *out, size_t out_len, const char *root, const char *rel) {
+    size_t rlen;
+    if (!out || out_len == 0) return;
+    out[0] = '\0';
+    if (!root) root = "";
+    if (!rel) rel = "";
+    while (*rel == '/') rel++;
+    rlen = strlen(root);
+    if (rlen > 0 && root[rlen - 1] == '/')
+        snprintf(out, out_len, "%s%s", root, rel);
+    else if (rlen > 0)
+        snprintf(out, out_len, "%s/%s", root, rel);
+    else
+        snprintf(out, out_len, "/%s", rel);
+}
+
+/**
+ * One-process economy push: all standard output/ targets without spawning N consoles.
+ * Uses same remote mapping as headless phase-3 upload.
+ */
+static int run_ftp_push_economy(int dry_run) {
+    char host[128] = {0};
+    char user[128] = {0};
+    char pass[128] = {0};
+    int port = 0;
+    ServerPaths paths;
+    char remote_mission[512];
+    char mission_base[256];
+    char *db_ptr;
+
+#define PUSH_MAX 128
+    char locals[PUSH_MAX][MAX_PATH_LEN];
+    char remotes[PUSH_MAX][MAX_PATH_LEN];
+    const char *local_ptrs[PUSH_MAX];
+    const char *remote_ptrs[PUSH_MAX];
+    int count = 0;
+    int i;
+    int upload_ok = 0, upload_fail = 0;
+
+    if (!load_ftp_credentials(host, sizeof(host), &port, user, sizeof(user), pass, sizeof(pass))) {
+        util_log(SEVERITY_ERROR, "FTP push: missing config/ftp.ini credentials");
+        return 1;
+    }
+    load_server_paths(&paths);
+
+    /* Mission base from REMOTE_TYPES (strip /db/...) */
+    strncpy(mission_base, paths.remote_types, sizeof(mission_base) - 1);
+    mission_base[sizeof(mission_base) - 1] = '\0';
+    db_ptr = strstr(mission_base, "/db/");
+    if (db_ptr) *db_ptr = '\0';
+    ftp_join_remote(remote_mission, sizeof(remote_mission), paths.remote_root, mission_base);
+    {
+        size_t rm = strlen(remote_mission);
+        if (rm > 1 && remote_mission[rm - 1] == '/')
+            remote_mission[rm - 1] = '\0';
+    }
+
+#define PUSH_ADD(local_path, remote_path) do { \
+    if (count < PUSH_MAX && util_file_exists(local_path)) { \
+        strncpy(locals[count], local_path, MAX_PATH_LEN - 1); \
+        locals[count][MAX_PATH_LEN - 1] = '\0'; \
+        strncpy(remotes[count], remote_path, MAX_PATH_LEN - 1); \
+        remotes[count][MAX_PATH_LEN - 1] = '\0'; \
+        count++; \
+    } \
+} while (0)
+
+    {
+        char full[512];
+        ftp_join_remote(full, sizeof(full), paths.remote_root, paths.remote_types);
+        PUSH_ADD("output/types.xml", full);
+        snprintf(full, sizeof(full), "%s/cfgspawnabletypes.xml", remote_mission);
+        PUSH_ADD("output/cfgspawnabletypes.xml", full);
+        snprintf(full, sizeof(full), "%s/cfgeconomycore.xml", remote_mission);
+        PUSH_ADD("output/cfgeconomycore.xml", full);
+        snprintf(full, sizeof(full), "%s/cfglimitsdefinitionuser.xml", remote_mission);
+        PUSH_ADD("output/cfglimitsdefinitionuser.xml", full);
+        snprintf(full, sizeof(full), "%s/cfgrandompresets.xml", remote_mission);
+        PUSH_ADD("output/cfgrandompresets.xml", full);
+        if (paths.remote_trader[0]) {
+            ftp_join_remote(full, sizeof(full), paths.remote_root, paths.remote_trader);
+            PUSH_ADD("output/TraderConfig.txt", full);
+        }
+        {
+            char rt_sfl[512] = "SearchForLoot/SearchForLoot.json";
+            util_read_ini_value("config/server_paths.ini", "REMOTE_SFL", rt_sfl, sizeof(rt_sfl));
+            ftp_join_remote(full, sizeof(full), paths.remote_root, rt_sfl);
+            PUSH_ADD("output/SearchForLoot.json", full);
+        }
+        snprintf(full, sizeof(full), "%s/db/types_infected.xml", remote_mission);
+        PUSH_ADD("output/zombie_tiers/types_infected.xml", full);
+        snprintf(full, sizeof(full), "%s/db/types_wildlife.xml", remote_mission);
+        PUSH_ADD("output/zombie_tiers/types_wildlife.xml", full);
+    }
+
+    /* Per-shop files */
+#ifdef _WIN32
+    {
+        WIN32_FIND_DATAA fd;
+        HANDLE hFind;
+        char trader_dir[MAX_PATH_LEN];
+        char *slash;
+        strncpy(trader_dir, paths.remote_trader, sizeof(trader_dir) - 1);
+        trader_dir[sizeof(trader_dir) - 1] = '\0';
+        slash = strrchr(trader_dir, '/');
+        if (slash) *(slash + 1) = '\0';
+        else strncpy(trader_dir, "profiles/Trader/", sizeof(trader_dir) - 1);
+
+        hFind = FindFirstFileA("output\\shops\\*", &fd);
+        if (hFind != INVALID_HANDLE_VALUE) {
+            do {
+                char local_shop[MAX_PATH_LEN];
+                char remote_shop[512];
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                snprintf(local_shop, sizeof(local_shop), "output/shops/%s", fd.cFileName);
+                ftp_join_remote(remote_shop, sizeof(remote_shop), paths.remote_root, trader_dir);
+                {
+                    size_t rlen = strlen(remote_shop);
+                    if (rlen > 0 && remote_shop[rlen - 1] != '/') {
+                        remote_shop[rlen] = '/';
+                        remote_shop[rlen + 1] = '\0';
+                    }
+                }
+                strncat(remote_shop, fd.cFileName, sizeof(remote_shop) - strlen(remote_shop) - 1);
+                PUSH_ADD(local_shop, remote_shop);
+            } while (FindNextFileA(hFind, &fd));
+            FindClose(hFind);
+        }
+    }
+    /* Chernarus env (active map from mission path) */
+    if (strstr(remote_mission, "chernarusplus")) {
+        WIN32_FIND_DATAA fd;
+        HANDLE hFind = FindFirstFileA("output\\chernarusplus\\env\\*.xml", &fd);
+        if (hFind != INVALID_HANDLE_VALUE) {
+            do {
+                char local_file[MAX_PATH_LEN];
+                char remote_file[512];
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                snprintf(local_file, sizeof(local_file), "output/chernarusplus/env/%s", fd.cFileName);
+                snprintf(remote_file, sizeof(remote_file), "%s/env/%s", remote_mission, fd.cFileName);
+                PUSH_ADD(local_file, remote_file);
+            } while (FindNextFileA(hFind, &fd));
+            FindClose(hFind);
+        }
+    }
+#endif
+
+#undef PUSH_ADD
+
+    if (count == 0) {
+        util_log(SEVERITY_ERROR, "FTP push: no output files found under output/");
+        return 1;
+    }
+
+    util_log(SEVERITY_INFO, "FTP push-economy: %d file(s) planned (single process, quiet console)", count);
+    for (i = 0; i < count; i++) {
+        util_log(SEVERITY_INFO, "  [%d/%d] %s -> %s", i + 1, count, locals[i], remotes[i]);
+        if (dry_run)
+            printf("[dry-run] %s -> %s\n", locals[i], remotes[i]);
+        local_ptrs[i] = locals[i];
+        remote_ptrs[i] = remotes[i];
+    }
+
+    if (dry_run) {
+        printf("[dry-run] Would upload %d files via native/batch FTP (no console spam).\n", count);
+        return 0;
+    }
+
+#ifdef STELLI_USE_LIBCURL
+    if (ftp_native_backend_available())
+        ftp_native_reload_security_config();
+#endif
+
+    if (!ftp_upload_batch(host, port, user, pass, local_ptrs, remote_ptrs, count,
+                          &upload_ok, &upload_fail)) {
+        util_log(SEVERITY_ERROR, "FTP push-economy: batch upload failed (%d ok, %d fail)",
+                 upload_ok, upload_fail);
+        return 1;
+    }
+    util_log(SEVERITY_INFO, "FTP push-economy complete: %d ok, %d fail", upload_ok, upload_fail);
+    return (upload_fail > 0) ? 1 : 0;
+#undef PUSH_MAX
 }
 
 static int run_ftp_cli(int argc, char **argv) {
@@ -827,6 +1044,9 @@ static int run_ftp_cli(int argc, char **argv) {
                 strncpy(remote_arg, argv[++i], sizeof(remote_arg) - 1);
                 remote_arg[sizeof(remote_arg) - 1] = '\0';
             }
+        } else if (strcmp(argv[i], "--ftp-push-economy") == 0) {
+            if (mode != FTP_CLI_NONE) multi_mode = 1;
+            mode = FTP_CLI_PUSH_ECONOMY;
         } else if (strcmp(argv[i], "--remote") == 0) {
             if (i + 1 >= argc) {
                 util_log(SEVERITY_ERROR, "FTP CLI: --remote requires a path argument");
@@ -845,6 +1065,9 @@ static int run_ftp_cli(int argc, char **argv) {
             local_arg[sizeof(local_arg) - 1] = '\0';
         } else if (strcmp(argv[i], "--dry-run") == 0) {
             dry_run = 1;
+        } else if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0 ||
+                   strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0) {
+            /* handled by cli_wants_quiet / cli_setup_console before run_ftp_cli */
         } else if (strcmp(argv[i], "--help") == 0 ||
                    strcmp(argv[i], "-h") == 0 ||
                    strcmp(argv[i], "--ftp-help") == 0) {
@@ -872,9 +1095,12 @@ static int run_ftp_cli(int argc, char **argv) {
         return 1;
     }
     if (multi_mode) {
-        util_log(SEVERITY_ERROR, "FTP CLI: specify only one of --ftp-download / --ftp-upload / --ftp-list");
+        util_log(SEVERITY_ERROR, "FTP CLI: specify only one of --ftp-download / --ftp-upload / --ftp-list / --ftp-push-economy");
         return 1;
     }
+
+    if (mode == FTP_CLI_PUSH_ECONOMY)
+        return run_ftp_push_economy(dry_run);
 
     load_server_paths(&paths);
 
@@ -1120,7 +1346,7 @@ int main(int argc, char **argv) {
     /* Global help — never open the GUI for --help / -h / --ftp-help alone. */
     if (argc > 1 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0 ||
                      strcmp(argv[1], "--ftp-help") == 0 || strcmp(argv[1], "/?") == 0)) {
-        util_setup_console();
+        cli_setup_console(0); /* attach parent if any; avoid hidden-only for help text */
         print_ftp_cli_usage();
         util_close_logger();
         return 0;
@@ -1132,7 +1358,7 @@ int main(int argc, char **argv) {
      */
     if (argc > 1 && (strcmp(argv[1], "--ftp-export-login") == 0 ||
                      strcmp(argv[1], "--export-ftp-login") == 0)) {
-        util_setup_console();
+        cli_setup_console(cli_wants_quiet(argc, argv));
         {
             int result = export_ftp_login_fields();
             util_close_logger();
@@ -1141,15 +1367,12 @@ int main(int argc, char **argv) {
     }
 
     /*
-     * Standalone FTP/SFTP CLI (--ftp-download / --ftp-upload / --ftp-list).
-     * Detected before AuditorContext allocation (~195MB) and before UI.
-     * Headless: util_setup_console only; never ui_run.
-     * Coexists with --headless / --regen|--local / --restore-last-upload:
-     *   --local alone (argv[1]) still means local regen; --local <path> only
-     *   applies when a --ftp-* action is present.
+     * Standalone FTP/SFTP CLI (--ftp-download / --ftp-upload / --ftp-list /
+     * --ftp-push-economy). Quiet console by default so multi-file scripts do
+     * not open focus-stealing windows. Use --verbose for a visible banner.
      */
     if (cli_wants_ftp_mode(argc, argv)) {
-        util_setup_console();
+        cli_setup_console(cli_wants_quiet(argc, argv));
         {
             extern void util_check_and_install_dependencies(void);
             util_check_and_install_dependencies();
@@ -1179,7 +1402,7 @@ int main(int argc, char **argv) {
     util_check_and_install_dependencies();
     
     if (argc > 1 && strcmp(argv[1], "--headless") == 0) {
-        util_setup_console();   // WIN32 subsystem has no console; allocate one for CLI
+        cli_setup_console(cli_wants_quiet(argc, argv));
         int result = run_headless(ctx);
         free(ctx);
         util_close_job_object();
@@ -1190,7 +1413,7 @@ int main(int argc, char **argv) {
     /* --regen and bare --local (no --ftp-*) = local pipeline only, no FTP.
      * Note: --local <path> is handled only inside --ftp-* mode above. */
     if (argc > 1 && (strcmp(argv[1], "--regen") == 0 || strcmp(argv[1], "--local") == 0)) {
-        util_setup_console();   // WIN32 subsystem has no console; allocate one for CLI
+        cli_setup_console(cli_wants_quiet(argc, argv));
         int result = run_regen(ctx);
         free(ctx);
         util_close_job_object();
@@ -1199,7 +1422,7 @@ int main(int argc, char **argv) {
     }
 
     if (argc > 1 && strcmp(argv[1], "--restore-last-upload") == 0) {
-        util_setup_console();   // WIN32 subsystem has no console; allocate one for CLI
+        cli_setup_console(cli_wants_quiet(argc, argv));
         int result = run_restore_last_upload();
         free(ctx);
         util_close_job_object();

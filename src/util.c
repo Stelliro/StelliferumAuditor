@@ -103,62 +103,109 @@ void util_close_job_object(void) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-void util_setup_console(void) {
+/*
+ * CLI / headless console setup.
+ *
+ * WIN32 subsystem apps have no console by default. Spawning many CLI instances
+ * used to AllocConsole() each time, which pops a new window, steals focus, and
+ * disrupts keyboard input. Prefer attaching to the parent console (PowerShell /
+ * cmd / terminal). Only allocate a hidden console as last resort so logs still
+ * have a stream without flashing UI.
+ */
+static void util_bind_stdio_to_console(void) {
 #ifdef _WIN32
-    // Allocate a console for headless / CLI mode (WIN32 subsystem has none)
-    AllocConsole();
-    freopen("CONOUT$", "w", stdout);
-    freopen("CONOUT$", "w", stderr);
-    freopen("CONIN$", "r", stdin);
+    FILE *fp = NULL;
+    freopen_s(&fp, "CONOUT$", "w", stdout);
+    freopen_s(&fp, "CONOUT$", "w", stderr);
+    freopen_s(&fp, "CONIN$", "r", stdin);
 
-    // Set console title
-    SetConsoleTitleA("Stelliferum Auditor \xe2\x80\x94 Log");
-
-    // Disable Quick-Edit mode (prevents accidental freeze when user clicks console)
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     DWORD in_mode = 0;
-    if (GetConsoleMode(hIn, &in_mode)) {
-        in_mode &= ~0x0040; // ENABLE_QUICK_EDIT_MODE
-        in_mode |= 0x0080;  // ENABLE_EXTENDED_FLAGS
+    if (hIn && hIn != INVALID_HANDLE_VALUE && GetConsoleMode(hIn, &in_mode)) {
+        in_mode &= ~0x0040; /* ENABLE_QUICK_EDIT_MODE */
+        in_mode |= 0x0080;  /* ENABLE_EXTENDED_FLAGS */
         SetConsoleMode(hIn, in_mode);
     }
 
-    // Enable ANSI / Virtual Terminal Processing for colored output
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD out_mode = 0;
-    if (GetConsoleMode(hOut, &out_mode)) {
-        out_mode |= 0x0004; // ENABLE_VIRTUAL_TERMINAL_PROCESSING
-        if (SetConsoleMode(hOut, out_mode)) {
+    if (hOut && hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &out_mode)) {
+        out_mode |= 0x0004; /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */
+        if (SetConsoleMode(hOut, out_mode))
             console_colors_enabled = true;
-        }
     }
+#else
+    (void)0;
+#endif
+}
 
-    // Banner (CLI / headless — native libcurl preferred; WinSCP optional Windows fallback)
+static void util_print_cli_banner(void) {
     if (console_colors_enabled) {
         printf("\033[33m");
         printf("==========================================================\n");
-        printf("  STELLIFERUM AUDITOR  \xe2\x80\x94  Active Log\n");
-        printf("  This window shows real-time operation logs.\n");
+        printf("  STELLIFERUM AUDITOR  - Active Log\n");
         printf("  Transfer: native FTP/SFTP (libcurl); WinSCP optional.\n");
         printf("==========================================================\n");
         printf("\033[0m\n");
     } else {
         printf("==========================================================\n");
         printf("  STELLIFERUM AUDITOR  - Active Log\n");
-        printf("  This window shows real-time operation logs.\n");
         printf("  Transfer: native FTP/SFTP (libcurl); WinSCP optional.\n");
         printf("==========================================================\n\n");
     }
     fflush(stdout);
+}
+
+void util_setup_console(void) {
+#ifdef _WIN32
+    BOOL attached = FALSE;
+    BOOL allocated = FALSE;
+
+    /* Already have a console (e.g. linked as console subsystem)? */
+    if (GetConsoleWindow() != NULL) {
+        attached = TRUE;
+    } else if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        /* Reuse caller's PowerShell/cmd/Windows Terminal — no new window. */
+        attached = TRUE;
+    } else if (AllocConsole()) {
+        /*
+         * No parent console (double-clicked / GUI-spawned). Allocate but hide
+         * immediately so we do not steal focus when many CLI jobs run.
+         */
+        allocated = TRUE;
+        HWND hwnd = GetConsoleWindow();
+        if (hwnd) {
+            ShowWindow(hwnd, SW_HIDE);
+        }
+    }
+
+    if (attached || allocated) {
+        util_bind_stdio_to_console();
+        if (attached && !allocated) {
+            SetConsoleTitleA("Stelliferum Auditor - Log");
+            util_print_cli_banner();
+        }
+        /* Hidden allocated console: still get stdout for freopen, but no banner flash */
+    }
 #else
-    /* Linux/macOS: process already has a TTY for CLI/headless — no WinSCP,
-     * no AllocConsole. Native libcurl is the required transfer path. */
     console_colors_enabled = true;
-    printf("==========================================================\n");
-    printf("  STELLIFERUM AUDITOR  - Active Log\n");
-    printf("  Transfer: native FTP/SFTP (libcurl); WinSCP not used.\n");
-    printf("==========================================================\n\n");
-    fflush(stdout);
+    util_print_cli_banner();
+#endif
+}
+
+void util_setup_console_quiet(void) {
+#ifdef _WIN32
+    /*
+     * Quiet mode: never create a visible console. Attach to parent if present
+     * so scripted runs can capture output; otherwise log file only (.TEMP).
+     */
+    if (GetConsoleWindow() != NULL || AttachConsole(ATTACH_PARENT_PROCESS)) {
+        util_bind_stdio_to_console();
+    }
+    /* No AllocConsole — avoids focus theft entirely. */
+#else
+    /* Unix: leave existing stdio; do not force a banner. */
+    console_colors_enabled = false;
 #endif
 }
 
