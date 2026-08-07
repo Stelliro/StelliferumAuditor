@@ -163,3 +163,9 @@ env/
 CODEBASE_INDEX.md
 .claude/
 .cursor/
+
+# Local credential backups
+config/ftp.ini.bak*
+config/*.credentials
+config/*secret*
+
