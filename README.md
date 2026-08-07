@@ -204,61 +204,31 @@ More build detail: [docs/BUILD.md](docs/BUILD.md). System design: [docs/SYSTEM_O
 
 ## Roadmap
 
-Work planned after the **1.0.0** baseline. Issues hold full write-ups; this table is the living checklist.
+Work planned after **1.0.0**. Ordered by **implementation priority** (dependencies + risk first, features after the foundation can hold them). Issue numbers are GitHub links, not priority numbers.
 
-Product features and engineering debt are listed separately. Several engineering items came from an external review (WinSCP fragility, Python friction, platform lock-in, config validation) and were **confirmed against the current C/C++ backend**—with extra findings from code inspection.
+| Priority | Status | Item | Issue | Why here |
+| ---: | --- | --- | --- | --- |
+| 1 | **Todo** | **Transfer security** — Host-key pinning (drop `-hostkey=*`), no password on process argv, scrub `.TEMP` scripts/logs. | [#9](https://github.com/Stelliro/StelliferumAuditor/issues/9) | Smallest high-impact safety fix; can land while WinSCP still exists. |
+| 2 | **Todo** | **Native SFTP/FTP stack** — Replace WinSCP subprocess + PE patch + log scraping with libcurl/libssh2. Structured errors, cancel, progress. | [#5](https://github.com/Stelliro/StelliferumAuditor/issues/5) | Removes the weakest runtime dependency; unblocks standalone FTP and non-Windows. |
+| 3 | **Todo** | **Config validation & dead loaders** — Schema-checked configs + ImGui errors; wire or delete stub `tier_rules`/`known_items`; real AI JSON reimport. | [#8](https://github.com/Stelliro/StelliferumAuditor/issues/8) | Stops silent wrong economies before we invest in richer policy UI. |
+| 4 | **Todo** | **Reliability baseline** — Tests + CI; soft capacity limits; thread safety for pipeline/FTP vs UI; start splitting `ui.cpp`. | [#11](https://github.com/Stelliro/StelliferumAuditor/issues/11) | Safety net before large product/UI refactors. |
+| 5 | **Todo** | **Better loot & shop configuration** — First-class policy editing; shop stock/pricing/categories/currencies; previews/diffs. | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) | Core product value once config and export paths are trustworthy. |
+| 6 | **Todo** | **Mod containers & mod-function loot by tier** — Per-mod container/storage parameters that vary by tier; audit/export integration. | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) | Builds on solid loot policy (#3) instead of another parallel override system. |
+| 7 | **Todo** | **Expansion Market export parity** — Real Expansion JSON export; no silent TraderPlus fallback. | [#10](https://github.com/Stelliro/StelliferumAuditor/issues/10) | Natural extension of shop config work (#3). |
+| 8 | **Todo** | **UI overhaul** — Navigation, filterable tables, pipeline/FTP status, safer guards, layout polish. | [#2](https://github.com/Stelliro/StelliferumAuditor/issues/2) | Redesign after data/transfer behavior is stable so UI does not encode WinSCP quirks. |
+| 9 | **Todo** | **Standalone FTP tool** — Lightweight CLI/UI for sync without the full Auditor. | [#4](https://github.com/Stelliro/StelliferumAuditor/issues/4) | Reuses the native transfer API from #5; thin product on top of #2 patterns. |
+| 10 | **Todo** | **Zero-dependency AI helpers** — Bundle, reimplement, or demote Python/Ollama cortex & Phoenix so core stays double-click. | [#6](https://github.com/Stelliro/StelliferumAuditor/issues/6) | Optional power features; must not block daily economy workflows. |
+| 11 | **Todo** | **Cross-platform builds** — Linux/macOS after native transfers and OS abstractions. | [#7](https://github.com/Stelliro/StelliferumAuditor/issues/7) | Payoff of #5/#11; publish when Windows path is solid, not before. |
 
-### Product
+### Why this order
 
-| Status | Item | Issue |
-| --- | --- | --- |
-| **Todo** | **Mod containers & mod-function loot params by tier** — Detect containers/storage from different mods; per-mod loot parameters that can differ by economy tier; apply via audit/export. | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) |
-| **Todo** | **UI overhaul** — Navigation, large item/issue tables (filter/search), swarm + FTP status, safer empty states / pre-upload guards, 1080p/1440p polish. | [#2](https://github.com/Stelliro/StelliferumAuditor/issues/2) |
-| **Todo** | **Better loot & shop configuration** — First-class loot policy editing plus stronger shop/trader setup (stock, pricing, categories, currencies, previews/diffs). | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) |
-| **Todo** | **Standalone FTP tool** — Lightweight download/upload/sync without the full Auditor; shared credentials/paths, dry-run, clear errors. Best after native transfer (#5). | [#4](https://github.com/Stelliro/StelliferumAuditor/issues/4) |
-| **Todo** | **Expansion Market export parity** — UI offers Expansion Market but writer currently falls back to TraderPlus. | [#10](https://github.com/Stelliro/StelliferumAuditor/issues/10) |
+Foundation first: **secure transfers → native transfers → honest config → tests/threads**. Product next: **loot/shops → containers → Expansion**. Experience last: **UI polish → standalone FTP**. Optional/expansion last: **AI packaging → non-Windows**.
 
-### Engineering & reliability
+### Background (review + code audit)
 
-| Status | Item | Issue |
-| --- | --- | --- |
-| **Todo** | **Native SFTP/FTP stack** — Replace WinSCP subprocess + PE patch + log scraping with libcurl/libssh2 (or similar). Structured errors, cancel/progress, no opaque child hangs. | [#5](https://github.com/Stelliro/StelliferumAuditor/issues/5) |
-| **Todo** | **Zero-dependency AI helpers** — Stop requiring admins to install Python/Ollama for cortex/Phoenix (`system("python …")`); bundle, reimplement, or graceful offline fallback. | [#6](https://github.com/Stelliro/StelliferumAuditor/issues/6) |
-| **Todo** | **Cross-platform builds** — Linux/macOS once transfers are native and Win32-only paths are abstracted. | [#7](https://github.com/Stelliro/StelliferumAuditor/issues/7) |
-| **Todo** | **Config validation & dead loaders** — Schema-checked INI/JSON with ImGui errors; wire or remove `tier_rules.json` / `known_items.json` stubs; real AI-balancer JSON reimport. | [#8](https://github.com/Stelliro/StelliferumAuditor/issues/8) |
-| **Todo** | **Transfer security** — Drop trust-any `-hostkey=*`; no password on process argv; scrub `.TEMP` scripts/logs. | [#9](https://github.com/Stelliro/StelliferumAuditor/issues/9) |
-| **Todo** | **Reliability** — Automated tests + CI; soft `MAX_ITEMS`/batch limits with UI; thread safety for pipeline/FTP vs UI; split monolithic `ui.cpp`. | [#11](https://github.com/Stelliro/StelliferumAuditor/issues/11) |
-
-### Review notes (confirmed in code)
-
-1. **WinSCP is a weak link (agree + more).** Transfers go through generated scripts and `CreateProcess` on an embedded WinSCP binary (`ftp_manager.c`). The app also **patches the PE subsystem** at runtime to invent `WinSCP.com` (`dependency_manager.c`). Connection quality and error handling depend on log tailing. Native libcurl/libssh2 is the right long-term fix (#5).
-
-2. **Python cortex friction (agree + more).** Optional helpers are launched with bare `system("python …")` from C. They further expect **Ollama/Qwen** and `requests`—far more than “Python on PATH.” Core 1.0.0 should stay double-click; AI extras need packaging or offline paths (#6).
-
-3. **Platform lock-in (agree).** CMake/raylib/ImGui are portable, but WinSCP embedding, Win32 threads, and Windows-first scripts pin the product. Native transfers unlock Linux/macOS (#5 → #7).
-
-4. **Config validation (agree, nuance).** There is **no nlohmann/json** in-tree—JSON is hand-rolled string scanning in several modules. `loot_policy.ini` loads with soft defaults; `known_items.json` is a **stub loader** (`return true`); balancer reimport is a **stub**. Users need red UI errors, not silent wrong economies (#8).
-
-5. **Extra findings from the backend**
-   - **Transfer security:** SFTP uses `-hostkey=*`; credentials are passed as WinSCP `/parameter` (visible in process listings); `.TEMP/winscp*.log` may retain sensitive detail (#9).
-   - **Incomplete shop path:** Expansion Market export not implemented; silent-ish fallback to TraderPlus (#10).
-   - **Hard capacity / buffers:** `MAX_ITEMS` can skip remaining classnames; some WinSCP batch scripts are fixed-size buffers that truncate when overfull (#11).
-   - **Concurrency:** Background download/pipeline/upload threads share auditor state with minimal locking (#11).
-   - **No automated tests/CI** in the repo today (#11).
-   - **UI mass:** `ui.cpp` is ~2.6k lines—hard to evolve safely alongside #2.
-
-### Suggested order
-
-1. **#9** quick wins on host keys / credential handling (even before full rewrite)  
-2. **#5** native transfer (unblocks #4 standalone FTP and #7 cross-platform)  
-3. **#8** config honesty + validation (prevents bad economies)  
-4. **#3 / #1 / #10** loot-shop-container product work on a solid base  
-5. **#2 / #11** UI overhaul + modularization + tests  
-6. **#6** package or demote Python/AI extras  
-7. **#7** publish non-Windows builds when #5 is done  
+External review flagged WinSCP fragility, Python/env friction, Windows lock-in, and weak config validation. Backend inspection confirmed those and added: PE subsystem patching for WinSCP, credentials on argv + trust-any host keys, stub loaders (`known_items`, balancer JSON import), incomplete Expansion export, hard `MAX_ITEMS`/batch buffers, lightly synchronized background threads, no CI tests, and a ~2.6k-line `ui.cpp`.
 
 ---
-
 
 ## License
 
