@@ -8,6 +8,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 static void strict_url_encode(const char *src, char *dest, size_t dest_len) {
@@ -1559,6 +1562,26 @@ static int rp_compare_desc(const void *a, const void *b) {
     return strcmp(rb->label, ra->label);  // descending
 }
 
+static void restore_point_fill(RestorePointInfo *rp, const char *dirname) {
+    char manifest[MAX_PATH_LEN];
+    snprintf(manifest, sizeof(manifest), "backups/%s/restore_manifest.txt", dirname);
+    if (!util_file_exists(manifest)) return;
+    snprintf(rp->dir, sizeof(rp->dir), "backups/%s", dirname);
+    strncpy(rp->manifest, manifest, sizeof(rp->manifest) - 1);
+    rp->manifest[sizeof(rp->manifest) - 1] = '\0';
+    if (strcmp(dirname, "last_upload") == 0) {
+        strncpy(rp->label, "Last Upload (legacy)", sizeof(rp->label) - 1);
+    } else if (strlen(dirname) == 15 && dirname[8] == '_') {
+        snprintf(rp->label, sizeof(rp->label),
+                 "%.4s-%.2s-%.2s %.2s:%.2s:%.2s",
+                 dirname, dirname + 4, dirname + 6,
+                 dirname + 9, dirname + 11, dirname + 13);
+    } else {
+        strncpy(rp->label, dirname, sizeof(rp->label) - 1);
+    }
+    rp->label[sizeof(rp->label) - 1] = '\0';
+}
+
 int ftp_list_restore_points(RestorePointInfo *out, int max_count) {
     if (!out || max_count <= 0) return 0;
 
@@ -1575,35 +1598,35 @@ int ftp_list_restore_points(RestorePointInfo *out, int max_count) {
         if (fd.cFileName[0] == '.') continue;  // skip . and ..
         if (count >= max_count) break;
 
-        // Check if this directory has a restore_manifest.txt
-        char manifest[MAX_PATH_LEN];
-        snprintf(manifest, sizeof(manifest), "backups/%s/restore_manifest.txt", fd.cFileName);
-        if (!util_file_exists(manifest)) continue;
-
-        RestorePointInfo *rp = &out[count];
-        snprintf(rp->dir, sizeof(rp->dir), "backups/%s", fd.cFileName);
-        strncpy(rp->manifest, manifest, sizeof(rp->manifest) - 1);
-        rp->manifest[sizeof(rp->manifest) - 1] = '\0';
-
-        // Generate human-readable label from directory name
-        // Format: "20250115_143022" -> "2025-01-15 14:30:22"
-        // Or "last_upload" -> "Last Upload (legacy)"
-        if (strcmp(fd.cFileName, "last_upload") == 0) {
-            strncpy(rp->label, "Last Upload (legacy)", sizeof(rp->label) - 1);
-        } else if (strlen(fd.cFileName) == 15 && fd.cFileName[8] == '_') {
-            // Parse YYYYMMDD_HHMMSS format
-            snprintf(rp->label, sizeof(rp->label),
-                     "%.4s-%.2s-%.2s %.2s:%.2s:%.2s",
-                     fd.cFileName, fd.cFileName + 4, fd.cFileName + 6,
-                     fd.cFileName + 9, fd.cFileName + 11, fd.cFileName + 13);
-        } else {
-            strncpy(rp->label, fd.cFileName, sizeof(rp->label) - 1);
+        {
+            char manifest[MAX_PATH_LEN];
+            snprintf(manifest, sizeof(manifest), "backups/%s/restore_manifest.txt", fd.cFileName);
+            if (!util_file_exists(manifest)) continue;
+            restore_point_fill(&out[count], fd.cFileName);
+            count++;
         }
-        rp->label[sizeof(rp->label) - 1] = '\0';
-
-        count++;
     } while (FindNextFileA(hFind, &fd));
     FindClose(hFind);
+#else
+    {
+        DIR *dir = opendir("backups");
+        struct dirent *ent;
+        if (dir) {
+            while ((ent = readdir(dir)) != NULL && count < max_count) {
+                char full[MAX_PATH_LEN];
+                struct stat st;
+                char manifest[MAX_PATH_LEN];
+                if (ent->d_name[0] == '.') continue;
+                snprintf(full, sizeof(full), "backups/%s", ent->d_name);
+                if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+                snprintf(manifest, sizeof(manifest), "backups/%s/restore_manifest.txt", ent->d_name);
+                if (!util_file_exists(manifest)) continue;
+                restore_point_fill(&out[count], ent->d_name);
+                count++;
+            }
+            closedir(dir);
+        }
+    }
 #endif
 
     // Sort newest first (descending by label)

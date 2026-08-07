@@ -25,7 +25,59 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
 #endif
+
+/* Iterate files in a directory (non-recursive). Calls fn(fullpath, ctx) for each regular file. */
+typedef void (*swarm_dir_file_fn)(AuditorContext *ctx, const char *full_path);
+
+static void swarm_foreach_file_in_dir(AuditorContext *ctx, const char *dir,
+                                      swarm_dir_file_fn fn) {
+    if (!ctx || !dir || !fn) return;
+#ifdef _WIN32
+    {
+        char search_path[MAX_PATH_LEN];
+        WIN32_FIND_DATAA fd;
+        HANDLE hFind;
+        snprintf(search_path, sizeof(search_path), "%s\\*", dir);
+        hFind = FindFirstFileA(search_path, &fd);
+        if (hFind == INVALID_HANDLE_VALUE) return;
+        do {
+            char full_path[MAX_PATH_LEN];
+            if (fd.cFileName[0] == '.') continue;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            snprintf(full_path, sizeof(full_path), "%s\\%s", dir, fd.cFileName);
+            fn(ctx, full_path);
+        } while (FindNextFileA(hFind, &fd));
+        FindClose(hFind);
+    }
+#else
+    {
+        DIR *d = opendir(dir);
+        struct dirent *ent;
+        if (!d) return;
+        while ((ent = readdir(d)) != NULL) {
+            char full_path[MAX_PATH_LEN];
+            struct stat st;
+            if (ent->d_name[0] == '.') continue;
+            snprintf(full_path, sizeof(full_path), "%s/%s", dir, ent->d_name);
+            if (stat(full_path, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+            fn(ctx, full_path);
+        }
+        closedir(d);
+    }
+#endif
+}
+
+static void swarm_load_types_file(AuditorContext *ctx, const char *full_path) {
+    parser_load_types_xml(ctx, full_path);
+}
+
+static void swarm_load_spawnable_file(AuditorContext *ctx, const char *full_path) {
+    parser_load_spawnable_xml(ctx, full_path);
+}
 
 // ============================================================================
 // INIT & TASK MANAGEMENT
@@ -272,22 +324,7 @@ static bool execute_parse_task(AuditorContext *ctx, SwarmTask *task) {
         if (ctx->files_sorted && ctx->sorted_types_count > 0) {
             char sorted_types_dir[MAX_PATH_LEN];
             snprintf(sorted_types_dir, sizeof(sorted_types_dir), "%s/types", sorted_root);
-#ifdef _WIN32
-            char search_path[MAX_PATH_LEN];
-            snprintf(search_path, sizeof(search_path), "%s\\*", sorted_types_dir);
-            WIN32_FIND_DATAA fd;
-            HANDLE hFind = FindFirstFileA(search_path, &fd);
-            if (hFind != INVALID_HANDLE_VALUE) {
-                do {
-                    if (fd.cFileName[0] == '.') continue;
-                    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-                    char full_path[MAX_PATH_LEN];
-                    snprintf(full_path, sizeof(full_path), "%s\\%s", sorted_types_dir, fd.cFileName);
-                    parser_load_types_xml(ctx, full_path);
-                } while (FindNextFileA(hFind, &fd));
-                FindClose(hFind);
-            }
-#endif
+            swarm_foreach_file_in_dir(ctx, sorted_types_dir, swarm_load_types_file);
         } else {
             // Fallback to file_index
             for (int i = 0; i < ctx->file_index.count; i++) {
@@ -311,22 +348,7 @@ static bool execute_parse_task(AuditorContext *ctx, SwarmTask *task) {
         if (ctx->files_sorted && ctx->sorted_spawnable_count > 0) {
             char sorted_spawn_dir[MAX_PATH_LEN];
             snprintf(sorted_spawn_dir, sizeof(sorted_spawn_dir), "%s/spawnabletypes", sorted_root);
-#ifdef _WIN32
-            char search_path[MAX_PATH_LEN];
-            snprintf(search_path, sizeof(search_path), "%s\\*", sorted_spawn_dir);
-            WIN32_FIND_DATAA fd;
-            HANDLE hFind = FindFirstFileA(search_path, &fd);
-            if (hFind != INVALID_HANDLE_VALUE) {
-                do {
-                    if (fd.cFileName[0] == '.') continue;
-                    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-                    char full_path[MAX_PATH_LEN];
-                    snprintf(full_path, sizeof(full_path), "%s\\%s", sorted_spawn_dir, fd.cFileName);
-                    parser_load_spawnable_xml(ctx, full_path);
-                } while (FindNextFileA(hFind, &fd));
-                FindClose(hFind);
-            }
-#endif
+            swarm_foreach_file_in_dir(ctx, sorted_spawn_dir, swarm_load_spawnable_file);
         } else {
             for (int i = 0; i < ctx->file_index.count; i++) {
                 FileIndexEntry *e = &ctx->file_index.entries[i];

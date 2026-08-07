@@ -37,6 +37,10 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 // ============================================================================
@@ -319,6 +323,44 @@ typedef struct {
     int total;
 } SortCounts;
 
+static void sort_one_file(const char *full_path, const char *filename,
+                          const char *sorted_root, SortCounts *counts) {
+    FileType type;
+    char mod_prefix[128];
+    const char *category_dir;
+    char dest_dir[MAX_PATH_LEN];
+    char dest_file[MAX_PATH_LEN];
+
+    if (!is_sortable_extension(filename)) return;
+
+    type = classify_file_by_content(full_path);
+    extract_mod_prefix(full_path, mod_prefix, sizeof(mod_prefix));
+    category_dir = filetype_dirname(type);
+
+    snprintf(dest_dir, sizeof(dest_dir), "%s/%s", sorted_root, category_dir);
+    util_ensure_directory(dest_dir);
+    snprintf(dest_file, sizeof(dest_file), "%s/%s__%s", dest_dir, mod_prefix, filename);
+
+    if (copy_file(full_path, dest_file)) {
+        util_log(SEVERITY_INFO, "Sorted: [%s] %s -> %s/%s__%s",
+                 filetype_label(type), filename, category_dir, mod_prefix, filename);
+        counts->total++;
+        switch (type) {
+            case FILE_TYPE_ECONOMY:       counts->types++; break;
+            case FILE_TYPE_SPAWNABLE:     counts->spawnable++; break;
+            case FILE_TYPE_TRADER:        counts->trader++; break;
+            case FILE_TYPE_TERRITORY:     counts->territory++; break;
+            case FILE_TYPE_EVENTS:        counts->events++; break;
+            case FILE_TYPE_GLOBALS:       counts->globals++; break;
+            case FILE_TYPE_RANDOMPRESETS: counts->randompresets++; break;
+            case FILE_TYPE_CONFIG:        counts->config++; break;
+            default:                      counts->unknown++; break;
+        }
+    } else {
+        util_log(SEVERITY_WARNING, "Sorter: Failed to copy '%s'", full_path);
+    }
+}
+
 #ifdef _WIN32
 static void sort_recurse(const char *path, const char *sorted_root, SortCounts *counts) {
     if (!path || !sorted_root || !counts) return;
@@ -332,57 +374,44 @@ static void sort_recurse(const char *path, const char *sorted_root, SortCounts *
     if (hFind == INVALID_HANDLE_VALUE) return;
 
     do {
-        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
-
         char full_path[MAX_PATH_LEN];
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
         snprintf(full_path, sizeof(full_path), "%s\\%s", path, fd.cFileName);
 
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            if (!should_skip_dir(fd.cFileName)) {
+            if (!should_skip_dir(fd.cFileName))
                 sort_recurse(full_path, sorted_root, counts);
-            }
         } else {
-            if (!is_sortable_extension(fd.cFileName)) continue;
-
-            // Classify by content
-            FileType type = classify_file_by_content(full_path);
-
-            // Build destination path:  sorted/<category>/<ModPrefix>__<filename>
-            char mod_prefix[128];
-            extract_mod_prefix(full_path, mod_prefix, sizeof(mod_prefix));
-
-            const char *category_dir = filetype_dirname(type);
-            
-            char dest_dir[MAX_PATH_LEN];
-            snprintf(dest_dir, sizeof(dest_dir), "%s\\%s", sorted_root, category_dir);
-            util_ensure_directory(dest_dir);
-
-            // Build unique destination filename
-            char dest_file[MAX_PATH_LEN];
-            snprintf(dest_file, sizeof(dest_file), "%s\\%s__%s", dest_dir, mod_prefix, fd.cFileName);
-
-            if (copy_file(full_path, dest_file)) {
-                util_log(SEVERITY_INFO, "Sorted: [%s] %s -> %s/%s__%s",
-                         filetype_label(type), fd.cFileName, category_dir, mod_prefix, fd.cFileName);
-                counts->total++;
-                switch (type) {
-                    case FILE_TYPE_ECONOMY:       counts->types++; break;
-                    case FILE_TYPE_SPAWNABLE:     counts->spawnable++; break;
-                    case FILE_TYPE_TRADER:        counts->trader++; break;
-                    case FILE_TYPE_TERRITORY:     counts->territory++; break;
-                    case FILE_TYPE_EVENTS:        counts->events++; break;
-                    case FILE_TYPE_GLOBALS:        counts->globals++; break;
-                    case FILE_TYPE_RANDOMPRESETS:  counts->randompresets++; break;
-                    case FILE_TYPE_CONFIG:         counts->config++; break;
-                    default:                       counts->unknown++; break;
-                }
-            } else {
-                util_log(SEVERITY_WARNING, "Sorter: Failed to copy '%s'", full_path);
-            }
+            sort_one_file(full_path, fd.cFileName, sorted_root, counts);
         }
     } while (FindNextFileA(hFind, &fd));
 
     FindClose(hFind);
+}
+#else
+static void sort_recurse(const char *path, const char *sorted_root, SortCounts *counts) {
+    DIR *dir;
+    struct dirent *ent;
+    if (!path || !sorted_root || !counts) return;
+    if (strlen(path) >= MAX_PATH_LEN - 4) return;
+
+    dir = opendir(path);
+    if (!dir) return;
+
+    while ((ent = readdir(dir)) != NULL) {
+        char full_path[MAX_PATH_LEN];
+        struct stat st;
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, ent->d_name);
+        if (stat(full_path, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (!should_skip_dir(ent->d_name))
+                sort_recurse(full_path, sorted_root, counts);
+        } else if (S_ISREG(st.st_mode)) {
+            sort_one_file(full_path, ent->d_name, sorted_root, counts);
+        }
+    }
+    closedir(dir);
 }
 #endif
 
@@ -406,15 +435,13 @@ void file_sorter_run(AuditorContext *ctx, const char *download_root, const char 
     };
     for (int i = 0; i < 9; i++) {
         char dir[MAX_PATH_LEN];
-        snprintf(dir, sizeof(dir), "%s\\%s", sorted_root, subdirs[i]);
+        snprintf(dir, sizeof(dir), "%s/%s", sorted_root, subdirs[i]);
         util_ensure_directory(dir);
     }
 
     SortCounts counts = {0};
 
-#ifdef _WIN32
     sort_recurse(download_root, sorted_root, &counts);
-#endif
 
     // Store results in context
     ctx->sorted_types_count = counts.types;

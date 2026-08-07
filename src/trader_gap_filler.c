@@ -25,6 +25,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 // ============================================================================
@@ -172,69 +175,90 @@ static void extract_classnames_from_trader_txt(const char *data, size_t data_len
 // LOAD TRADER CLASSNAMES FROM SORTED DIRECTORY
 // ============================================================================
 
-static void load_trader_classnames(AuditorContext *ctx, const char *sorted_root) {
-    ctx->trader_classname_count = 0;
+static void load_one_trader_file(AuditorContext *ctx, const char *filepath, const char *filename) {
+    FILE *f;
+    long fsize;
+    char *data;
+    int before;
+    const char *ext;
+    int loaded;
 
+    f = fopen(filepath, "rb");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    fsize = ftell(f);
+    if (fsize <= 0 || fsize > 10 * 1024 * 1024) { fclose(f); return; }
+    fseek(f, 0, SEEK_SET);
+    data = (char *)malloc((size_t)fsize + 1);
+    if (!data) { fclose(f); return; }
+    fread(data, 1, (size_t)fsize, f);
+    data[fsize] = '\0';
+    fclose(f);
+
+    before = ctx->trader_classname_count;
+    ext = strrchr(filename, '.');
+    if (ext && util_strcasecmp(ext, ".json") == 0) {
+        extract_classnames_from_json(data, (size_t)fsize,
+            ctx->trader_classnames, &ctx->trader_classname_count, MAX_ITEMS);
+    } else if (ext && util_strcasecmp(ext, ".xml") == 0) {
+        extract_classnames_from_trader_xml(data, (size_t)fsize,
+            ctx->trader_classnames, &ctx->trader_classname_count, MAX_ITEMS);
+    } else if (ext && util_strcasecmp(ext, ".txt") == 0) {
+        extract_classnames_from_trader_txt(data, (size_t)fsize,
+            ctx->trader_classnames, &ctx->trader_classname_count, MAX_ITEMS);
+    }
+
+    loaded = ctx->trader_classname_count - before;
+    if (loaded > 0)
+        util_log(SEVERITY_INFO, "TraderGap: Loaded %d classnames from '%s'", loaded, filename);
+    free(data);
+}
+
+static void load_trader_classnames(AuditorContext *ctx, const char *sorted_root) {
     char trader_dir[MAX_PATH_LEN];
-    snprintf(trader_dir, sizeof(trader_dir), "%s\\trader", sorted_root);
+    ctx->trader_classname_count = 0;
+    snprintf(trader_dir, sizeof(trader_dir), "%s/trader", sorted_root);
 
     util_log(SEVERITY_INFO, "TraderGap: Scanning '%s' for existing trader files...", trader_dir);
 
 #ifdef _WIN32
-    char search[MAX_PATH_LEN];
-    snprintf(search, sizeof(search), "%s\\*", trader_dir);
-
-    WIN32_FIND_DATAA fd;
-    HANDLE hFind = FindFirstFileA(search, &fd);
-    if (hFind == INVALID_HANDLE_VALUE) {
-        util_log(SEVERITY_WARNING, "TraderGap: No files found in sorted/trader/");
-        return;
+    {
+        char search[MAX_PATH_LEN];
+        WIN32_FIND_DATAA fd;
+        HANDLE hFind;
+        snprintf(search, sizeof(search), "%s\\*", trader_dir);
+        hFind = FindFirstFileA(search, &fd);
+        if (hFind == INVALID_HANDLE_VALUE) {
+            util_log(SEVERITY_WARNING, "TraderGap: No files found in sorted/trader/");
+            return;
+        }
+        do {
+            char filepath[MAX_PATH_LEN];
+            if (fd.cFileName[0] == '.') continue;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            snprintf(filepath, sizeof(filepath), "%s/%s", trader_dir, fd.cFileName);
+            load_one_trader_file(ctx, filepath, fd.cFileName);
+        } while (FindNextFileA(hFind, &fd));
+        FindClose(hFind);
     }
-
-    do {
-        if (fd.cFileName[0] == '.') continue;
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-
-        char filepath[MAX_PATH_LEN];
-        snprintf(filepath, sizeof(filepath), "%s\\%s", trader_dir, fd.cFileName);
-
-        // Read the file
-        FILE *f = fopen(filepath, "rb");
-        if (!f) continue;
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        if (fsize <= 0 || fsize > 10 * 1024 * 1024) { fclose(f); continue; }
-        fseek(f, 0, SEEK_SET);
-        char *data = (char*)malloc(fsize + 1);
-        if (!data) { fclose(f); continue; }
-        fread(data, 1, fsize, f);
-        data[fsize] = '\0';
-        fclose(f);
-
-        int before = ctx->trader_classname_count;
-
-        // Determine format and extract
-        const char *ext = strrchr(fd.cFileName, '.');
-        if (ext && util_strcasecmp(ext, ".json") == 0) {
-            extract_classnames_from_json(data, (size_t)fsize,
-                ctx->trader_classnames, &ctx->trader_classname_count, MAX_ITEMS);
-        } else if (ext && util_strcasecmp(ext, ".xml") == 0) {
-            extract_classnames_from_trader_xml(data, (size_t)fsize,
-                ctx->trader_classnames, &ctx->trader_classname_count, MAX_ITEMS);
-        } else if (ext && util_strcasecmp(ext, ".txt") == 0) {
-            extract_classnames_from_trader_txt(data, (size_t)fsize,
-                ctx->trader_classnames, &ctx->trader_classname_count, MAX_ITEMS);
+#else
+    {
+        DIR *dir = opendir(trader_dir);
+        struct dirent *ent;
+        if (!dir) {
+            util_log(SEVERITY_WARNING, "TraderGap: No files found in sorted/trader/");
+            return;
         }
-
-        int loaded = ctx->trader_classname_count - before;
-        if (loaded > 0) {
-            util_log(SEVERITY_INFO, "TraderGap: Loaded %d classnames from '%s'", loaded, fd.cFileName);
+        while ((ent = readdir(dir)) != NULL) {
+            char filepath[MAX_PATH_LEN];
+            struct stat st;
+            if (ent->d_name[0] == '.') continue;
+            snprintf(filepath, sizeof(filepath), "%s/%s", trader_dir, ent->d_name);
+            if (stat(filepath, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+            load_one_trader_file(ctx, filepath, ent->d_name);
         }
-
-        free(data);
-    } while (FindNextFileA(hFind, &fd));
-
-    FindClose(hFind);
+        closedir(dir);
+    }
 #endif
 
     util_log(SEVERITY_INFO, "TraderGap: %d total classnames found in existing trader files.", ctx->trader_classname_count);

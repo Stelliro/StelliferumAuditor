@@ -14,6 +14,10 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 // ============================================================================
@@ -127,6 +131,25 @@ static bool is_useful_extension(const char *filename) {
 // RECURSIVE SCAN
 // ============================================================================
 
+static void scan_index_add_file(FileIndex *idx, const char *full_path, const char *filename) {
+    FileIndexEntry *entry;
+    if (!idx || !full_path || !filename) return;
+    if (idx->count >= MAX_INDEX_ENTRIES) return;
+    if (!is_useful_extension(filename)) return;
+
+    entry = &idx->entries[idx->count];
+    memset(entry, 0, sizeof(FileIndexEntry));
+    strncpy(entry->filepath, full_path, MAX_PATH_LEN - 1);
+    strncpy(entry->filename, filename, 127);
+    extract_mod_name(full_path, entry->mod_name, 128);
+    entry->map_id = file_index_detect_map(full_path);
+    entry->is_vanilla = (strcmp(entry->mod_name, "vanilla") == 0);
+    entry->is_mod = (entry->mod_name[0] == '@');
+    entry->file_type = FILE_TYPE_UNKNOWN; /* Classified later */
+    entry->processed = false;
+    idx->count++;
+}
+
 #ifdef _WIN32
 static void scan_recurse(FileIndex *idx, const char *path) {
     if (!idx || !path) return;
@@ -151,25 +174,37 @@ static void scan_recurse(FileIndex *idx, const char *path) {
                 scan_recurse(idx, full_path);
             }
         } else {
-            if (is_useful_extension(fd.cFileName) && idx->count < MAX_INDEX_ENTRIES) {
-                FileIndexEntry *entry = &idx->entries[idx->count];
-                memset(entry, 0, sizeof(FileIndexEntry));
-                
-                strncpy(entry->filepath, full_path, MAX_PATH_LEN - 1);
-                strncpy(entry->filename, fd.cFileName, 127);
-                extract_mod_name(full_path, entry->mod_name, 128);
-                entry->map_id = file_index_detect_map(full_path);
-                entry->is_vanilla = (strcmp(entry->mod_name, "vanilla") == 0);
-                entry->is_mod = (entry->mod_name[0] == '@');
-                entry->file_type = FILE_TYPE_UNKNOWN; // Classified later
-                entry->processed = false;
-                
-                idx->count++;
-            }
+            scan_index_add_file(idx, full_path, fd.cFileName);
         }
     } while (FindNextFileA(hFind, &fd) && idx->count < MAX_INDEX_ENTRIES);
     
     FindClose(hFind);
+}
+#else
+static void scan_recurse(FileIndex *idx, const char *path) {
+    DIR *dir;
+    struct dirent *ent;
+    if (!idx || !path) return;
+    if (idx->count >= MAX_INDEX_ENTRIES) return;
+    if (strlen(path) >= MAX_PATH_LEN - 4) return;
+
+    dir = opendir(path);
+    if (!dir) return;
+
+    while ((ent = readdir(dir)) != NULL && idx->count < MAX_INDEX_ENTRIES) {
+        char full_path[MAX_PATH_LEN];
+        struct stat st;
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, ent->d_name);
+        if (stat(full_path, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (!should_skip_dir(ent->d_name))
+                scan_recurse(idx, full_path);
+        } else if (S_ISREG(st.st_mode)) {
+            scan_index_add_file(idx, full_path, ent->d_name);
+        }
+    }
+    closedir(dir);
 }
 #endif
 
@@ -188,9 +223,7 @@ void file_index_scan(FileIndex *idx, const char *root_dir) {
     idx->count = 0;
     util_log(SEVERITY_INFO, "FileIndex: Scanning '%s'...", root_dir);
     
-#ifdef _WIN32
     scan_recurse(idx, root_dir);
-#endif
     
     util_log(SEVERITY_INFO, "FileIndex: Found %d files.", idx->count);
 }
