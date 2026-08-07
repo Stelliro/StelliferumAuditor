@@ -61,14 +61,33 @@ static void paths_load(CmdPaths *p) {
     strncpy(p->remote_trader, "profiles/Trader/TraderConfig.txt", sizeof(p->remote_trader) - 1);
     strncpy(p->remote_sfl, "SearchForLoot/SearchForLoot.json", sizeof(p->remote_sfl) - 1);
 
-    util_read_ini_value("config/server_paths.ini", "REMOTE_ROOT", p->remote_root, sizeof(p->remote_root));
+    /* Soft config validation (missing file / REMOTE_ROOT / LOCAL_ROOT) — never abort. */
+    util_soft_validate_server_paths("config/server_paths.ini");
+
+    {
+        bool has_remote = util_read_ini_value("config/server_paths.ini", "REMOTE_ROOT",
+                                              p->remote_root, sizeof(p->remote_root));
+        bool has_local = util_read_ini_value("config/server_paths.ini", "LOCAL_ROOT",
+                                             p->local_root, sizeof(p->local_root));
+        if (has_remote) {
+            util_trim(p->remote_root);
+            if (!p->remote_root[0])
+                strncpy(p->remote_root, "/", sizeof(p->remote_root) - 1);
+        }
+        if (has_local) {
+            util_trim(p->local_root);
+            if (!p->local_root[0])
+                strncpy(p->local_root, "downloaded_mods", sizeof(p->local_root) - 1);
+        } else {
+            strncpy(p->local_root, "downloaded_mods", sizeof(p->local_root) - 1);
+        }
+    }
     util_read_ini_value("config/server_paths.ini", "REMOTE_TYPES", p->remote_types, sizeof(p->remote_types));
     util_read_ini_value("config/server_paths.ini", "REMOTE_SPAWNABLE", p->remote_spawnable, sizeof(p->remote_spawnable));
     util_read_ini_value("config/server_paths.ini", "REMOTE_EVENTS", p->remote_events, sizeof(p->remote_events));
     util_read_ini_value("config/server_paths.ini", "REMOTE_GLOBALS", p->remote_globals, sizeof(p->remote_globals));
     util_read_ini_value("config/server_paths.ini", "REMOTE_TRADER", p->remote_trader, sizeof(p->remote_trader));
     util_read_ini_value("config/server_paths.ini", "REMOTE_SFL", p->remote_sfl, sizeof(p->remote_sfl));
-    util_read_ini_value("config/server_paths.ini", "LOCAL_ROOT", p->local_root, sizeof(p->local_root));
 }
 
 static void str_trim_inplace(char *s) {

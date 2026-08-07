@@ -24,6 +24,7 @@
 
 #include "auditor.h"
 #include "loot_manager.h"
+#include "loot_policy.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,9 +209,14 @@ static int sfl_classify(const LootItem *item, int bldg_idx) {
         return -1;
     if (sfl_is_currency(item->classname))
         return -1;
-    // Skip items with zero nominal that aren't trader-only (T9+)
-    if (item->nominal <= 0 && item->assigned_tier < 9)
-        return -1;
+    // Skip zero-nominal items that are not on the Black Market (trader-only) tier.
+    // Policy BM default is T11; Elite/Mythic remain spawning tiers.
+    {
+        int bm = lp_black_market_tier();
+        if (bm <= 0) bm = 11;
+        if (item->nominal <= 0 && item->assigned_tier < bm)
+            return -1;
+    }
 
     const char *cat = item->category;
     const char *cn  = item->classname;

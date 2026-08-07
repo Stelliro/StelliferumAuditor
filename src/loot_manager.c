@@ -149,10 +149,10 @@ int loot_get_mod_tier(LootItem *item) {
 
         if (item->nominal == 0) {
             int bm = lp_black_market_tier();
-            tier = (bm > 0) ? bm : 9;  // Store Only -> Black Market tier (no spawn)
+            tier = (bm > 0) ? bm : 11;  // Store Only -> Black Market tier (no spawn)
         }
         else if (snafu_is_ammo) {
-            tier = 7;  // Ammo → Spec-Ops (needs to be findable)
+            tier = 7;  // Ammo → Spec Ops (needs to be findable)
         }
         else if (snafu_is_mag) {
             tier = 8;  // Magazines → Operator
@@ -161,11 +161,11 @@ int loot_get_mod_tier(LootItem *item) {
             tier = 8;  // Optics/attachments → Operator
         }
         else {
-            // Actual weapons: tier by nominal
+            // Actual weapons: tier by nominal (Elite/Mythic, not BM — BM is store-only)
             if (item->nominal <= 1) tier = 10; // Very rare weapons → Mythic
-            else if (item->nominal <= 3) tier = 9;  // Rare weapons → Black Market
+            else if (item->nominal <= 3) tier = 9;  // Rare weapons → Elite
             else if (item->nominal <= 5) tier = 8;  // Uncommon weapons → Operator
-            else tier = 7;                           // Common weapons → Spec-Ops
+            else tier = 7;                           // Common weapons → Spec Ops
         }
     }
     // MORTY'S WEAPONS: Mid-High Tier (Tier 5-7)
@@ -270,10 +270,10 @@ int loot_get_mod_tier(LootItem *item) {
 
     // STORE-ONLY CHECK (Global): nominal-0 items never world-spawn, so route them
     // to the Black Market tier (no spawn, purchasable in Bitcoin) rather than a
-    // spawning tier. Falls back to 9 if no black_market tier is configured.
+    // spawning tier. Falls back to 11 (default BM) if no black_market flag set.
     if (item->nominal == 0) {
         int bm = lp_black_market_tier();
-        if (bm <= 0) bm = 9;
+        if (bm <= 0) bm = 11;
         if (tier < bm) tier = bm;
     }
 

@@ -57,7 +57,9 @@ extern LootPolicy g_loot_policy;
 void loot_policy_init_defaults(void);
 
 // Load policy from `path` (INI). Starts from defaults, overrides with file
-// contents. Returns false if the file is missing (defaults remain in effect).
+// contents. Soft-fails: missing/unreadable/malformed critical keys log
+// SEVERITY_ERROR and keep safe defaults/partial apply — never aborts.
+// Returns false if the file is missing/unreadable (defaults remain in effect).
 bool loot_policy_load(const char *path);
 
 // Persist g_loot_policy back to `path` (INI). Used by the UI Save button.

@@ -223,7 +223,7 @@ bool writer_export_audit_report(AuditorContext *ctx, const char *filepath, bool 
     
     int total_active = 0;
     int orphans = 0;
-    int tier_counts[12] = {0}; 
+    int tier_counts[MAX_TIERS + 1] = {0}; 
     int high_value_items = 0;
     int zombie_counts[5] = {0};  // [0]=untiered, [1-4]=tier
     int animal_counts[5] = {0};
@@ -273,7 +273,7 @@ bool writer_export_audit_report(AuditorContext *ctx, const char *filepath, bool 
             continue; // Don't count animals in orphan/tier stats
         }
         
-        if (item->assigned_tier >= 1 && item->assigned_tier <= 11) 
+        if (item->assigned_tier >= 1 && item->assigned_tier <= MAX_TIERS)
             tier_counts[item->assigned_tier]++;
         else 
             tier_counts[0]++;
@@ -498,9 +498,14 @@ bool writer_export_audit_report(AuditorContext *ctx, const char *filepath, bool 
     fprintf(f, "High-Load Items:      %d\n", high_value_items);
     
     fprintf(f, "\n[ITEM TIER DISTRIBUTION]\n");
-    for(int t=1; t<=11; t++) {
-        if (tier_counts[t] > 0 || t <= 4) {
-            fprintf(f, "%-22s: %d items\n", get_tier_name(t), tier_counts[t]);
+    {
+        int ntiers = lp_tier_count();
+        if (ntiers < 1) ntiers = 12;
+        if (ntiers > MAX_TIERS) ntiers = MAX_TIERS;
+        for (int t = 1; t <= ntiers; t++) {
+            if (tier_counts[t] > 0 || t <= 4) {
+                fprintf(f, "%-22s: %d items\n", get_tier_name(t), tier_counts[t]);
+            }
         }
     }
     fprintf(f, "%-22s: %d items\n", "Untiered/Global", tier_counts[0]);
@@ -830,7 +835,7 @@ static const char* drjones_item_flag(const char *trader_cat) {
 //   Base Building   — Base Building, Storage
 //   Harbour Master  — Boats, Fishing Gear (separate waterfront location)
 //   Collectables    — Heirloom (HeirloomToken currency)
-//   Black Market    — Black Market (Bitcoin currency, T9-T11)
+//   Black Market    — Black Market (Bitcoin currency; policy black_market tier)
 //   Currency Exch.  — Bitcoin buy/sell with USD
 // ============================================================================
 

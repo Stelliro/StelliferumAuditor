@@ -359,26 +359,27 @@ void auditor_rename_collisions(AuditorContext *ctx) {
 }
 
 /**
- * Map auditor's internal 11-tier system to DayZ CE-compatible value tags (Tier1-4).
+ * Map auditor's internal 12-tier policy to DayZ CE-compatible value tags (Tier1-4).
  * DayZ's Central Economy only recognizes Tier1-Tier4 + Unique as valueflags
- * (defined in cfglimitsdefinition.xml). Writing Tier5-Tier11 causes CE errors:
+ * (defined in cfglimitsdefinition.xml). Writing Tier5+ causes CE errors:
  *   "!!! [CE] :: Unknown value: 'Tier5'."
  *
- * Mapping rationale:
- *   T1  Scavenger   → Tier1           (coast)
- *   T2  Survivor    → Tier1, Tier2    (coast/inland transition)
- *   T3  Constable   → Tier2           (towns)
- *   T4  Outdoorsman → Tier2, Tier3    (towns/hunting overlap)
- *   T5  Insurgent   → Tier3           (military checkpoints)
- *   T6  Infantry    → Tier3, Tier4    (major military bases)
- *   T7  Spec-Ops    → Tier4           (NWAF/Tisy)
- *   T8  Operator    → Tier4           (heli crashes / endgame)
- *   T9  Black Mkt   → Tier4           (ultra rare military)
- *   T10 Mythic      → Tier4           (near impossible)
- *   T11 Admin       → (none)          (nominal 0, doesn't CE-spawn)
+ * Default progressive fantasy map (see config/loot_policy.ini):
+ *   T1  Coast Scav      → low CE band (coast)
+ *   T2  Town Survivor   → coast/inland transition
+ *   T3  Constable       → towns
+ *   T4  Outdoorsman     → towns/hunting overlap
+ *   T5  Insurgent       → military checkpoints
+ *   T6  Infantry        → major military bases
+ *   T7  Spec Ops        → NWAF/Tisy
+ *   T8  Operator        → heli / endgame
+ *   T9  Elite           → ultra rare military
+ *   T10 Mythic          → near impossible
+ *   T11 Black Market    → (none — NOSPAWN, trader-only)
+ *   T12 Contraband      → (none — NOSPAWN/NOTRADE)
  *
- * The usage flags (Military, Town, Village, etc.) provide additional filtering
- * so items don't leak into wrong building types even if geographic tiers overlap.
+ * Actual CE tags are computed from spawning-tier rank (lp_tier_spawns), not
+ * hard-coded indices. Usage flags further filter building types.
  */
 static void auditor_assign_ce_values(LootItem *item, int tier) {
     if (!item || tier <= 0) return;
@@ -704,8 +705,8 @@ void auditor_rebalance_usage_pools(AuditorContext *ctx) {
 // BLACK MARKET WORLD SPAWN WHITELIST
 // ============================================================================
 // Curated list of ~20 iconic weapons that spawn in the world as ultra-rare
-// Black Market finds (T9, nominal=1, min=0). All other T9 items remain
-// trader-only (nominal=0). Total expected world spawns: ~20 across the map.
+// Black Market finds (policy BM tier, nominal=1, min=0). All other BM-tier
+// items remain trader-only (nominal=0). Total expected world spawns: ~20.
 // ============================================================================
 
 static const char *BLACK_MARKET_SPAWN_WHITELIST[] = {
@@ -746,11 +747,14 @@ static bool is_black_market_spawn(const char *classname) {
 }
 
 static void auditor_enforce_black_market_spawns(AuditorContext *ctx) {
+    int bm_tier = lp_black_market_tier();
+    if (bm_tier <= 0) return; /* no BM tier configured — nothing to promote */
+
     int promoted = 0;
     for (int i = 0; i < ctx->item_count; i++) {
         LootItem *item = &ctx->items[i];
         if (item->deleted) continue;
-        if (item->assigned_tier != 9) continue;
+        if (item->assigned_tier != bm_tier) continue;
         if (item->nominal > 0) continue; // Already spawns — don't touch
 
         if (is_black_market_spawn(item->classname)) {

@@ -15,7 +15,7 @@ Built for **Stelliferrum Forge** (*“You are not a hero; you are prey.”*).
 - **Base snapshot** — first pull copies originals into `base/` (never mutated by the app)
 - **Multi-file economy load** — vanilla + every mod `types.xml` in one pass
 - **XML classification** — economy, spawnable, territory, globals, events, trader/config
-- **11-tier loot policy** — scavenger coast through mythic / collectible tiers
+- **12-tier loot policy** — Coast Scav through Mythic, Black Market, and Contraband
 - **Conflict merge** — duplicate classnames resolved (mod-aware)
 - **Gap fill** — missing usage, tier, min, lifetime filled from policy
 - **Swarm pipeline** — index → sort → parse → audit → stitch → export
@@ -44,7 +44,7 @@ A checked-in snapshot of a full economy export, rendered as Markdown grids:
 | Tool | Notes |
 | --- | --- |
 | Windows 10/11 | Primary desktop target |
-| Linux / macOS | Transfer + CLI supported via native libcurl (see [docs/BUILD.md](docs/BUILD.md)) |
+| Linux / macOS | Headless CLI + transfer complete via native libcurl (no WinSCP); full desktop packaging still open (see [docs/BUILD.md](docs/BUILD.md)) |
 | Visual Studio 2022 | C++ desktop workload (Windows) |
 | CMake 3.16+ | On `PATH` |
 | Git | Fetches raylib / ImGui / rlImGui / libcurl+libssh2 (default) |
@@ -270,19 +270,22 @@ SHOP_MOD=drjones
 
 ## Economy tiers
 
-| Tier | Name | Zone | Role |
-| ---: | --- | --- | --- |
-| 1 | Scavenger | Civilian | Coast / junk density |
-| 2 | Survivor | Civilian | Inland towns |
-| 3 | Constable | Civilian | Police / civic |
-| 4 | Outdoorsman | Civilian | Hunting / rural |
-| 5 | Insurgent | Military | Checkpoints |
-| 6 | Infantry | Military | Major bases |
-| 7 | Spec-Ops | Military | High-tier military |
-| 8 | Operator | End-Game | Heli / rare |
-| 9 | Black Market | End-Game | Bunker / illicit |
-| 10 | Mythic | End-Game | Ultra-rare |
-| 11 | Collectible / Craftable | Special | Caps, craft-only, zero-spawn |
+Source of truth: `config/loot_policy.ini` (`TIER_NAMES`, spawn/trade flags). Defaults:
+
+| Tier | Name | Zone | Role | Spawn | Trade |
+| ---: | --- | --- | --- | --- | --- |
+| 1 | Coast Scav | Civilian | Coast / junk density | yes | yes |
+| 2 | Town Survivor | Civilian | Inland towns | yes | yes |
+| 3 | Constable | Civilian | Police / civic | yes | yes |
+| 4 | Outdoorsman | Civilian | Hunting / rural | yes | yes |
+| 5 | Insurgent | Military | Checkpoints | yes | yes |
+| 6 | Infantry | Military | Major bases | yes | yes |
+| 7 | Spec Ops | Military | High-tier military | yes | yes |
+| 8 | Operator | End-Game | Heli / rare | yes | yes |
+| 9 | Elite | End-Game | Ultra-rare military | yes | yes |
+| 10 | Mythic | End-Game | Near-impossible finds | yes | yes |
+| 11 | Black Market | Special | Trader-only (Bitcoin); NOSPAWN | no | yes (BM) |
+| 12 | Contraband | Special | Banned / blacklist bucket; NOTRADE | no | no |
 
 See the [example catalog](examples/items/README.md) for a full classname grid from a real export.
 
@@ -329,33 +332,41 @@ More build detail: [docs/BUILD.md](docs/BUILD.md). Ship brief: [docs/NATIVE_FTP_
 
 ## Roadmap
 
-Work planned after **1.0.0**. Ordered by **implementation priority** (dependencies + risk first, features after the foundation can hold them). Issue numbers are GitHub links, not priority numbers.
+### Shipped through **1.1.0** (complete)
 
-| Priority | Status | Item | Issue | Why here |
-| ---: | --- | --- | --- | --- |
-| 1 | **Done** (native path) | **Transfer security** — Host-key / known_hosts + optional pin; no password on process argv; no plaintext temp scripts on native path. WinSCP fallback remains legacy/weaker. | [#9](https://github.com/Stelliro/StelliferumAuditor/issues/9) | Shipped with native libcurl path (`KNOWN_HOSTS` / `HOST_KEY_PIN` / `HOST_KEY_POLICY` in `ftp.ini`). |
-| 2 | **Done** | **Native SFTP/FTP stack** — libcurl + libssh2 preferred; structured cancel/progress; WinSCP optional Windows fallback only. | [#5](https://github.com/Stelliro/StelliferumAuditor/issues/5) | Core transfer no longer depends on WinSCP subprocess for the success path. |
-| 3 | **Partial** | **Config validation & dead loaders** — loot_policy distribution targets + clearer load; full schema UI / known_items still open. | [#8](https://github.com/Stelliro/StelliferumAuditor/issues/8) | Soft targets live in `loot_policy.ini`; deeper validation later. |
-| 4 | **Todo** | **Reliability baseline** — Tests + CI; soft capacity limits; thread safety for pipeline/FTP vs UI; start splitting `ui.cpp`. | [#11](https://github.com/Stelliro/StelliferumAuditor/issues/11) | Safety net before large product/UI refactors. |
-| 5 | **Partial** | **Better loot & shop configuration** — Renamed tiers + NOMINAL/MIN/LIFETIME/RESTOCK targets; shop UI/previews still open. | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) | Progressive tier names + soft distribution applied in pipeline. |
-| 6 | **Todo** | **Mod containers & mod-function loot by tier** — Per-mod container/storage parameters that vary by tier; audit/export integration. | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) | Builds on solid loot policy (#3) instead of another parallel override system. |
-| 7 | **Todo** | **Expansion Market export parity** — Real Expansion JSON export; no silent TraderPlus fallback. | [#10](https://github.com/Stelliro/StelliferumAuditor/issues/10) | Natural extension of shop config work (#3). |
-| 8 | **Todo** | **UI overhaul** — Navigation, filterable tables, pipeline/FTP status, safer guards, layout polish. | [#2](https://github.com/Stelliro/StelliferumAuditor/issues/2) | Redesign after data/transfer behavior is stable so UI does not encode WinSCP quirks. |
-| 9 | **Done** (CLI mode) | **Standalone FTP tool** — Integrated CLI on the same binary (`--ftp-list` / `--ftp-download` / `--ftp-upload`); dedicated lightweight UI still open if desired. | [#4](https://github.com/Stelliro/StelliferumAuditor/issues/4) | Reuses native transfer API from #5; ops can sync without the full GUI pipeline. |
-| 10 | **Todo** | **Zero-dependency AI helpers** — Bundle, reimplement, or demote Python/Ollama cortex & Phoenix so core stays double-click. | [#6](https://github.com/Stelliro/StelliferumAuditor/issues/6) | Optional power features; must not block daily economy workflows. |
-| 11 | **Partial** | **Cross-platform builds** — Alpine/Linux headless CLI proven; full desktop packaging still open. | [#7](https://github.com/Stelliro/StelliferumAuditor/issues/7) | `sfa` + `build-alpine` path works for pull/pipeline/push. |
+| Area | What landed | Issue |
+| --- | --- | --- |
+| **Transfer security** | Host-key / known_hosts + optional pin; no password on argv; no plaintext temp scripts on native path | [#9](https://github.com/Stelliro/StelliferumAuditor/issues/9) (closed) |
+| **Native SFTP/FTP** | libcurl + libssh2 preferred; cancel/progress; WinSCP optional Windows fallback only | [#5](https://github.com/Stelliro/StelliferumAuditor/issues/5) (closed) |
+| **Standalone transfer CLI** | Same binary: `--ftp-list` / `--ftp-download` / `--ftp-upload` / `--ftp-push-economy` | [#4](https://github.com/Stelliro/StelliferumAuditor/issues/4) (closed) |
+| **Simple terminal (`sfa`)** | `help` / `list` / `pull` / `pipeline` / `push` / `restore` / `run` + interactive shell; Windows `sfa.cmd` + Unix `sfa` | — |
+| **Loot tiers + distribution** | Progressive names (Coast Scav…Mythic / Black Market / Contraband); `NOMINAL`/`MIN`/`LIFETIME`/`RESTOCK` targets applied in pipeline | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) *policy core done* |
+| **Soft config validation** | Non-fatal load errors for `loot_policy` / `server_paths` (log + defaults) | [#8](https://github.com/Stelliro/StelliferumAuditor/issues/8) *soft path done* |
+| **Mod-container policy (first cut)** | `config/container_policy.ini` schema + load stub | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) *load stub done* |
+| **Linux / Alpine headless** | musl/Alpine CLI build; native transfer; dual-platform pipeline → push → pull size+SHA verified | [#7](https://github.com/Stelliro/StelliferumAuditor/issues/7) *headless + transfer done* |
 
-### Progress note (native-ftp ship)
+Execution records: [docs/process-native-ftp-ship.md](docs/process-native-ftp-ship.md), [docs/process-roadmap-loot-ship.md](docs/process-roadmap-loot-ship.md), [docs/process-dual-platform-pipeline-test.md](docs/process-dual-platform-pipeline-test.md). Briefs: [docs/NATIVE_FTP_SHIP_BRIEF.md](docs/NATIVE_FTP_SHIP_BRIEF.md), [docs/ROADMAP_SHIP_BRIEF.md](docs/ROADMAP_SHIP_BRIEF.md).
 
-Roadmap **#9**, **#5**, **#4** (as CLI mode), and structural **#7** (Linux without WinSCP for core transfer) landed in the native FTP/SFTP ship. Execution record: [docs/process-native-ftp-ship.md](docs/process-native-ftp-ship.md). Brief: [docs/NATIVE_FTP_SHIP_BRIEF.md](docs/NATIVE_FTP_SHIP_BRIEF.md).
+### Still open (post-1.1.0)
 
-### Why this order
+| Item | Issue | Notes |
+| --- | --- | --- |
+| **Reliability baseline** — CI/tests, soft capacity, thread safety, split `ui.cpp` | [#11](https://github.com/Stelliro/StelliferumAuditor/issues/11) | Safety net before large UI refactors |
+| **Shop UI / trader previews** (rest of loot-shop work) | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) | Policy + distribution already ship; UI/previews remain |
+| **Full mod-container cargo apply/export** | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) | Schema/load stub ships; CE cargo apply later |
+| **Dead JSON loaders / full config schema UI** | [#8](https://github.com/Stelliro/StelliferumAuditor/issues/8) | Soft validation ships; `known_items` / `tier_rules` loaders still historical |
+| **Expansion Market export parity** | [#10](https://github.com/Stelliro/StelliferumAuditor/issues/10) | Real Expansion JSON; no silent TraderPlus fallback |
+| **UI overhaul** | [#2](https://github.com/Stelliro/StelliferumAuditor/issues/2) | Navigation, tables, pipeline/FTP status, layout |
+| **Zero-dependency AI helpers** | [#6](https://github.com/Stelliro/StelliferumAuditor/issues/6) | Bundle/reimplement/demote Python cortex & Phoenix |
+| **Published Linux/macOS desktop packaging** | [#7](https://github.com/Stelliro/StelliferumAuditor/issues/7) | Headless CLI already works; full GUI packages later |
 
-Foundation first: **secure transfers → native transfers → honest config → tests/threads**. Product next: **loot/shops → containers → Expansion**. Experience: **UI polish** (standalone FTP CLI already shipped). Optional/expansion last: **AI packaging → full non-Windows product builds**.
+### Why this order (remaining)
+
+**Reliability → shop UI / containers apply → Expansion → full UI → AI packaging → desktop packages.** Transfer foundation and daily CLI ops are no longer blockers.
 
 ### Background (review + code audit)
 
-External review flagged WinSCP fragility, Python/env friction, Windows lock-in, and weak config validation. Backend inspection confirmed those and added: PE subsystem patching for WinSCP, credentials on argv + trust-any host keys (legacy WinSCP path), stub loaders (`known_items`, balancer JSON import), incomplete Expansion export, hard `MAX_ITEMS`/batch buffers, lightly synchronized background threads, no CI tests, and a ~2.6k-line `ui.cpp`. The **native path** addresses transfer security and the WinSCP hard-dependency for core sync; remaining items stay on the roadmap above.
+External review flagged WinSCP fragility, Python/env friction, Windows lock-in, and weak config validation. The **native path + sfa** addresses transfer security, WinSCP hard-dependency for core sync, and headless ops; remaining product/UI items stay in the open table above.
 
 ---
 

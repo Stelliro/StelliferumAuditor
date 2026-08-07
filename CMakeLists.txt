@@ -249,6 +249,7 @@ set(SOURCES
     src/ui.cpp
     src/loot_manager.c
     src/loot_policy.c
+    src/container_policy.c
     src/store_generator.c
     src/ftp_manager.c
     src/ftp_native.c
@@ -271,6 +272,7 @@ set(HEADERS
     include/auditor.h
     include/loot_manager.h
     include/loot_policy.h
+    include/container_policy.h
     include/resource_ids.h
     include/web_lookup.h
     include/cli_commands.h

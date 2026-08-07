@@ -41,13 +41,15 @@ Replace awkward order Mythic/Elite with progressive fantasy that matches zones:
 - Extend loot_policy.ini with optional per-tier nominal hints if code supports; otherwise document and adjust loot_manager heuristics / known multipliers
 
 ## Acceptance
-- [ ] loot_policy.ini has clearer TIER_NAMES
-- [ ] pipeline (--regen or sfa pipeline) produces items with new tier labels where applicable
-- [ ] config validation: missing/broken loot_policy fails soft with log error (no crash)
-- [ ] container policy file or section for mod containers (schema + load stub OK if full apply later)
-- [ ] sfa push / --ftp-push-economy succeeds
-- [ ] pull types.xml (or key file) and checksum/size match upload
-- [ ] README roadmap statuses updated
+- [x] loot_policy.ini has clearer TIER_NAMES
+- [x] pipeline (--regen or sfa pipeline) produces items with new tier labels where applicable
+- [x] config validation: missing/broken loot_policy fails soft with log error (no crash)
+- [x] container policy file or section for mod containers (schema + load stub OK if full apply later)
+- [x] sfa push / --ftp-push-economy succeeds
+- [x] pull types.xml (or key file) and checksum/size match upload
+- [x] README roadmap statuses updated
+
+**Status:** COMPLETE with dual-platform verify (see `docs/process-roadmap-loot-ship.md`, `docs/process-dual-platform-pipeline-test.md`, `qa/dual-platform/batch-acceptance.md`).
 
 ## Commands (use sfa / quiet)
 ```

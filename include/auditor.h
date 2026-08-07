@@ -497,6 +497,9 @@ void util_timestamp(char *buf, size_t len);
 unsigned int util_hash_string(const char *str);
 bool util_file_exists(const char *path);
 bool util_read_ini_value(const char *path, const char *key, char *out, size_t out_len);
+/* Soft-check config/server_paths.ini (or path). Logs SEVERITY_ERROR for missing
+ * file / REMOTE_ROOT / LOCAL_ROOT; never aborts. Safe to call from CLI/GUI/headless. */
+void util_soft_validate_server_paths(const char *ini_path);
 const char* util_basename(const char *path);
 bool util_find_file_by_name(const char *root, const char *filename, char *out, size_t out_len);
 void util_index_touch(const char *filepath, FileType type);

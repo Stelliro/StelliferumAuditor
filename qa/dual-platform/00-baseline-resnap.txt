@@ -1,0 +1,6 @@
+ec=0 size=2331636 local=qa\dual-platform\baseline\types.xml remote=/104.192.226.196_2322/mpmissions/dayzOffline.chernarusplus/db/types.xml
+ec=0 size=2198232 local=qa\dual-platform\baseline\cfgspawnabletypes.xml remote=/104.192.226.196_2322/mpmissions/dayzOffline.chernarusplus/cfgspawnabletypes.xml
+ec=0 size=2049 local=qa\dual-platform\baseline\cfgeconomycore.xml remote=/104.192.226.196_2322/mpmissions/dayzOffline.chernarusplus/cfgeconomycore.xml
+ec=0 size=2902 local=qa\dual-platform\baseline\cfglimitsdefinitionuser.xml remote=/104.192.226.196_2322/mpmissions/dayzOffline.chernarusplus/cfglimitsdefinitionuser.xml
+ec=0 size=34615 local=qa\dual-platform\baseline\cfgrandompresets.xml remote=/104.192.226.196_2322/mpmissions/dayzOffline.chernarusplus/cfgrandompresets.xml
+ec=0 size=153737 local=qa\dual-platform\baseline\TraderConfig.txt remote=/104.192.226.196_2322/profiles/Trader/TraderConfig.txt

@@ -5,14 +5,21 @@
 
 # --- Build / CMake ---
 build/
+build-alpine/
 build-linux*/
 cmake_build/
 out/
 dist/
-# Local QA artifacts may contain hostnames from live dry-runs — keep logs local
+# Local QA artifacts may contain hostnames / live dumps — keep bulk local
 qa/**/*.log
 qa/**/*session*
 qa/**/_tmp*
+qa/**/baseline/
+qa/**/*-verify/
+qa/**/pulled/
+qa/**/*.xml
+qa/**/*.json
+config/_qa_bak/
 
 # --- Release packaging (local) ---
 *.zip

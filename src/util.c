@@ -1,6 +1,7 @@
 
 #include "auditor.h"
 #include "loot_policy.h"
+#include "container_policy.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -294,8 +295,15 @@ void util_init_context(AuditorContext *ctx) {
     }
 
     // Load the user-configurable tier system + blacklist (config/loot_policy.ini).
-    // Falls back to the built-in 12-tier default map if the file is absent.
+    // Soft-fails with SEVERITY_ERROR and keeps built-in defaults if missing/bad.
     loot_policy_load(LP_CONFIG_PATH);
+
+    // Mod-container defaults by tier (config/container_policy.ini). Schema + load
+    // stub only — full cargo apply/export remains TODO. Soft-fails if missing.
+    container_policy_load(CP_CONFIG_PATH);
+
+    // Soft-validate server path roots for CLI/GUI/headless (non-fatal).
+    util_soft_validate_server_paths("config/server_paths.ini");
 }
 
 void util_cleanup_context(AuditorContext *ctx) {
@@ -676,6 +684,45 @@ bool util_read_ini_value(const char *path, const char *key, char *out, size_t ou
     }
     fclose(f);
     return found;
+}
+
+void util_soft_validate_server_paths(const char *ini_path) {
+    const char *path = (ini_path && ini_path[0]) ? ini_path : "config/server_paths.ini";
+    char buf[512];
+
+    if (!util_file_exists(path)) {
+        util_log(SEVERITY_ERROR,
+                 "server_paths: missing or unreadable '%s' — using defaults "
+                 "(REMOTE_ROOT=/, LOCAL_ROOT=downloaded_mods); continuing",
+                 path);
+        return; /* cannot inspect keys; non-fatal */
+    }
+
+    if (!util_read_ini_value(path, "REMOTE_ROOT", buf, sizeof(buf))) {
+        util_log(SEVERITY_ERROR,
+                 "server_paths: REMOTE_ROOT missing in '%s' — using default '/'",
+                 path);
+    } else {
+        util_trim(buf);
+        if (!buf[0]) {
+            util_log(SEVERITY_ERROR,
+                     "server_paths: REMOTE_ROOT is empty in '%s' — using default '/'",
+                     path);
+        }
+    }
+
+    if (!util_read_ini_value(path, "LOCAL_ROOT", buf, sizeof(buf))) {
+        util_log(SEVERITY_ERROR,
+                 "server_paths: LOCAL_ROOT missing in '%s' — using default 'downloaded_mods'",
+                 path);
+    } else {
+        util_trim(buf);
+        if (!buf[0]) {
+            util_log(SEVERITY_ERROR,
+                     "server_paths: LOCAL_ROOT is empty in '%s' — using default 'downloaded_mods'",
+                     path);
+        }
+    }
 }
 
 void util_ensure_directory(const char *path) {

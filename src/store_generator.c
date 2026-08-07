@@ -23,11 +23,11 @@
 //   - Endgame gear is aspirational — weeks of trading, not hours.
 //
 // CURRENCY:
-//   All tiers:   CJ187-Money-Dollars-Only (USD — standard currency)
-//   Tier 9-10:   CJ187-Money-Bitcoin (Black Market — bought/sold for BTC)
-//   Tier 11:     CJ187-Money-Bitcoin (Admin Only — sell only for BTC)
-//   Heirloom:    HeirloomToken (collectables / ultra-rare)
-//   Zombies:     NOT in store (excluded entirely)
+//   All tiers:      CJ187-Money-Dollars-Only (USD — standard currency)
+//   Black Market:   CJ187-Money-Bitcoin (policy black_market tiers, default T11)
+//   Heirloom:       HeirloomToken (collectables / ultra-rare)
+//   Contraband:     excluded from every shop (policy NOTRADE, default T12)
+//   Zombies:        NOT in store (excluded entirely)
 // ============================================================================
 
 // Hardcore sell ratio: players get back 15% of an item's buy price.
@@ -608,10 +608,11 @@ static void determine_category(LootItem *item) {
         strncpy(item->trader_cat, "Clothing", 63);
     }
     
-    // --- TIER OVERRIDES (Black Market for T9+) ---
-    // Vehicles are intentionally Tier 9 in DayZ types.xml but should stay
-    // in their vehicle shops, not get dumped into Black Market.
-    if (item->assigned_tier >= 9 &&
+    // --- TIER OVERRIDES (Black Market policy tiers only) ---
+    // Elite/Mythic stay in their category shops; only tiers flagged black_market
+    // (default T11) dump into the Black Market trader category. Vehicles stay
+    // in vehicle shops even if mis-tiered.
+    if (lp_tier_black_market(item->assigned_tier) &&
         util_strcasecmp(item->trader_cat, "Heirloom") != 0 &&
         util_strcasecmp(item->trader_cat, "Cars") != 0 &&
         util_strcasecmp(item->trader_cat, "Trucks") != 0 &&
@@ -659,9 +660,9 @@ static bool is_currency_item(const LootItem *item) {
 // CURRENCY ASSIGNMENT
 // ============================================================================
 // Standard currency: CJ187-Money-Dollars-Only (USD) for all tiers
-// Heirloom Tokens:   Tier 5 and items tagged Heirloom
-// Black Market BTC:  Tier 9-10 (bought & sold for Bitcoin)
-// Admin BTC:         Tier 11 (sell-only for Bitcoin)
+// Heirloom Tokens:   items tagged Heirloom
+// Black Market BTC:  policy black_market tiers (default T11; bought & sold BTC)
+// Contraband:        excluded from every shop (see item_belongs_to_shop)
 // Zombies:           Not in store at all
 // Currency items:    NOT in store (they are the medium of exchange, not goods)
 
@@ -681,7 +682,7 @@ static void assign_store_flags(LootItem *item) {
 
     bool is_heirloom = (util_strcasecmp(item->trader_cat, "Heirloom") == 0);
     
-    // Vehicle categories stay in their shops with USD, even at Tier 9
+    // Vehicle categories stay in their shops with USD even at high tiers
     bool is_vehicle_cat = (util_strcasecmp(item->trader_cat, "Cars") == 0 ||
                            util_strcasecmp(item->trader_cat, "Trucks") == 0 ||
                            util_strcasecmp(item->trader_cat, "Armoured Vehicles") == 0 ||
@@ -800,47 +801,74 @@ static void balance_economy_values(LootItem *item) {
 
     int tier = item->assigned_tier;
     if (tier <= 0) tier = 1;
-    
-    // --- NOMINAL SCALING ---
+
+    // Heirloom items are always ultra-rare (override density only).
+    bool is_heirloom = (util_strcasecmp(item->trader_cat, "Heirloom") == 0);
+    if (is_heirloom) {
+        item->nominal = 2;
+        item->min = 1;
+        item->modified = true;
+    }
+
+    // Prefer loot_policy.ini NOMINAL/MIN/LIFETIME/RESTOCK soft-targets when loaded.
+    // Auditor may already have applied once; soft blend converges and is idempotent at target.
+    if (g_loot_policy.has_distribution_targets) {
+        int nom = item->nominal;
+        int mn  = item->min;
+        int lt  = item->lifetime;
+        int rs  = item->restock;
+        if (is_heirloom) {
+            /* Keep heirloom rarity; still pull lifetime/restock; force 0 on no-spawn. */
+            lp_apply_distribution(tier, NULL, NULL, &lt, &rs);
+            if (!lp_tier_spawns(tier)) {
+                nom = 0;
+                mn = 0;
+            }
+        } else {
+            lp_apply_distribution(tier, &nom, &mn, &lt, &rs);
+        }
+        if (nom != item->nominal || mn != item->min ||
+            lt != item->lifetime || rs != item->restock) {
+            item->nominal  = nom;
+            item->min      = mn;
+            item->lifetime = lt;
+            item->restock  = rs;
+            item->modified = true;
+        }
+        if (item->nominal > 0 && item->min <= 0) {
+            item->min = (int)(item->nominal * 0.5);
+            if (item->min < 1) item->min = 1;
+            item->modified = true;
+        }
+        return;
+    }
+
+    // --- Fallback when policy has no distribution lists (legacy hard tables) ---
     // Sets maximum spawned instances on the map.
-    // T1: abundant, T11: near-zero
-    // "Lots of loot": targets bumped for an abundant-but-hardcore economy. This is
-    // a CAP (nominal only reduced if it exceeds target*3), so higher = more loot kept.
+    // T1: abundant, high tiers: sparse. Index is 1-based tier (T0 pad unused).
     static const int nominal_targets[] = {
         /*T0*/ 60, /*T1*/ 60, /*T2*/ 40, /*T3*/ 25, /*T4*/ 16,
         /*T5*/ 8,  /*T6*/ 12, /*T7*/ 8,  /*T8*/ 5,  /*T9*/ 3,
         /*T10*/ 2, /*T11*/ 1, /*T12*/ 1, /*T13*/ 1, /*T14*/ 1, /*T15*/ 1, /*T16*/ 1
     };
     int nom_target = (tier >= 0 && tier <= 16) ? nominal_targets[tier] : 1;
-    
-    // Only reduce nominal if it's way above target (don't increase low-set values)
-    // Exception: Heirloom items are ALWAYS rare
-    bool is_heirloom = (util_strcasecmp(item->trader_cat, "Heirloom") == 0);
-    if (is_heirloom) {
-        item->nominal = 2; // Ultra rare
-        item->min = 1;
-    } else if (item->nominal > nom_target * 3) {
-        // Item has way too many spawns for its tier — cap it
+
+    if (!is_heirloom && item->nominal > nom_target * 3) {
         item->nominal = nom_target * 2;
         item->modified = true;
     }
-    // Ensure min is reasonable relative to nominal
     if (item->nominal > 0 && item->min <= 0) {
         item->min = (int)(item->nominal * 0.5);
         if (item->min < 1) item->min = 1;
     }
 
-    // No-spawn tiers (Black Market, Contraband, or any user no-spawn tier): force
-    // nominal 0 so they never world-spawn (obtainable only via trader / banned).
+    // No-spawn tiers (Black Market, Contraband, or any user no-spawn tier).
     if (!lp_tier_spawns(tier)) {
         item->nominal = 0;
         item->min = 0;
         item->modified = true;
     }
-    
-    // --- LIFETIME SCALING ---
-    // How long items persist on the ground before despawning.
-    // T1: short (encourages looting), high tiers: long (reward finding them)
+
     static const int lifetime_targets[] = {
         /*T0*/ 3600, /*T1*/ 3600, /*T2*/ 5400, /*T3*/ 7200, /*T4*/ 10800,
         /*T5*/ 14400, /*T6*/ 14400, /*T7*/ 21600, /*T8*/ 28800, /*T9*/ 43200,
@@ -851,10 +879,7 @@ static void balance_economy_values(LootItem *item) {
         item->lifetime = life_target;
         item->modified = true;
     }
-    
-    // --- RESTOCK SCALING ---
-    // How often the CE can respawn this item (seconds).
-    // T1: fast respawn, high tiers: slow (maintain rarity)
+
     static const int restock_targets[] = {
         /*T0*/ 0, /*T1*/ 0, /*T2*/ 300, /*T3*/ 600, /*T4*/ 900,
         /*T5*/ 1800, /*T6*/ 1200, /*T7*/ 1800, /*T8*/ 2400, /*T9*/ 3600,

@@ -75,13 +75,34 @@ static void load_server_paths(ServerPaths *paths) {
     char remote_root[256] = "/";
     strncpy(paths->local_root, "downloaded_mods", sizeof(paths->local_root) - 1);
 
+    /* Soft config validation (missing file / REMOTE_ROOT / LOCAL_ROOT) — never abort. */
+    util_soft_validate_server_paths("config/server_paths.ini");
+
     bool has_remote_root = util_read_ini_value("config/server_paths.ini", "REMOTE_ROOT", remote_root, sizeof(remote_root));
+    bool has_local_root = util_read_ini_value("config/server_paths.ini", "LOCAL_ROOT", paths->local_root, sizeof(paths->local_root));
     bool has_types = util_read_ini_value("config/server_paths.ini", "REMOTE_TYPES", paths->remote_types, sizeof(paths->remote_types));
     bool has_spawnable = util_read_ini_value("config/server_paths.ini", "REMOTE_SPAWNABLE", paths->remote_spawnable, sizeof(paths->remote_spawnable));
     bool has_events = util_read_ini_value("config/server_paths.ini", "REMOTE_EVENTS", paths->remote_events, sizeof(paths->remote_events));
     bool has_globals = util_read_ini_value("config/server_paths.ini", "REMOTE_GLOBALS", paths->remote_globals, sizeof(paths->remote_globals));
     util_read_ini_value("config/server_paths.ini", "REMOTE_TRADER", paths->remote_trader, sizeof(paths->remote_trader));
-    util_read_ini_value("config/server_paths.ini", "LOCAL_ROOT", paths->local_root, sizeof(paths->local_root));
+
+    /* Empty values after a successful key match still fall back to defaults. */
+    if (has_remote_root) {
+        util_trim(remote_root);
+        if (!remote_root[0]) {
+            strncpy(remote_root, "/", sizeof(remote_root) - 1);
+            has_remote_root = false;
+        }
+    }
+    if (has_local_root) {
+        util_trim(paths->local_root);
+        if (!paths->local_root[0]) {
+            strncpy(paths->local_root, "downloaded_mods", sizeof(paths->local_root) - 1);
+            has_local_root = false;
+        }
+    } else {
+        strncpy(paths->local_root, "downloaded_mods", sizeof(paths->local_root) - 1);
+    }
 
     strncpy(paths->remote_root, remote_root, sizeof(paths->remote_root) - 1);
 
@@ -96,7 +117,7 @@ static void load_server_paths(ServerPaths *paths) {
     build_local(paths->local_events, sizeof(paths->local_events), paths->local_root, paths->remote_events);
     build_local(paths->local_globals, sizeof(paths->local_globals), paths->local_root, paths->remote_globals);
 
-    if (has_remote_root) {
+    if (has_remote_root && has_local_root) {
         util_log(SEVERITY_INFO, "Server paths loaded from config/server_paths.ini");
     }
 }
