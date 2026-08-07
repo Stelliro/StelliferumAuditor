@@ -1,0 +1,16 @@
+# Server file targets for headless and UI downloads
+# Copy values into server_paths.ini or edit that file in place.
+REMOTE_ROOT=/your/ftp/root/
+REMOTE_TYPES=mpmissions/dayzOffline.chernarusplus/db/types.xml
+REMOTE_SPAWNABLE=mpmissions/dayzOffline.chernarusplus/cfgspawnabletypes.xml
+REMOTE_EVENTS=mpmissions/dayzOffline.chernarusplus/db/events.xml
+REMOTE_GLOBALS=mpmissions/dayzOffline.chernarusplus/db/globals.xml
+REMOTE_TRADER=profiles/Trader/TraderConfig.txt
+LOCAL_ROOT=downloaded_mods
+DOWNLOAD_ALL_XML=1
+DOWNLOAD_CONFIG_FILES=1
+RESCAN_DAYS=7
+# Shop/Trader mod format: traderplus | drjones | expansion
+SHOP_MOD=drjones
+# Search For Loot Improved — remote path relative to REMOTE_ROOT
+REMOTE_SFL=profiles/SearchForLoot/SearchForLoot.json

@@ -1,0 +1,6 @@
+# Copy this file to ftp.ini and fill in your credentials.
+# ftp.ini is gitignored — never commit real passwords.
+HOST=your.server.hostname
+PORT=22
+USER=your_username
+PASS=your_password

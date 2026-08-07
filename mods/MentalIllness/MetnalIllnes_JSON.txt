@@ -1,0 +1,104 @@
+{
+    "MentalIllnessAll": [
+        {
+	    "qtywAlcol": 8.0,                   // how many Agents cut off Sum is 10* 8 if is 500ml or 14 if is 1000ml  ATM LIQUID VODKA or LIQUID BEER
+            "qtyHumanSteakInserted": 20.0,      // how many Agents Inserted Sum is 20*consumption
+            "qtyRest": 0.5,                     // Agent Cut Off while Sleeping * "restTimer"
+            "tickDiseaseCheck": 10.0,           //  every Check for the disease in SEC
+            "qtyShock": 0.10000000149011612,    //  shock inserted at max stage
+            "maxCount": 1000,                   //  Agent MaxCount
+             "stage1": 0,			//  stage 1 threshold
+            "stage2": 100,			//  stage 2 threshold
+            "stage3": 200,			//  stage 3 threshold
+            "stage4": 300,			//  stage 4 threshold
+            "stage5": 400,			//  stage 5 threshold
+            "radNameTestKit": 32		//  Radiation Type displayed on the BloodTestKit   
+            "spawnZombiePhantomQty3": 1,        //  qty of Illusion Phantom spawned when in 3 Stage
+            "spawnZombiePhantomQty4": 2,        //  qty of Illusion Phantom spawned when in 4 Stage
+            "spawnZombieQty5": 1                //  qty of zombie spawned when in 5 Stage
+        }
+    ],
+    "MentalIllnessCombat": [
+        {
+            "qtyBiteInserted": 10.0,		//  Qty of Agent inserted  after a Cut/Bleed from a Zombie
+	    "qtyBiteInsertedAnimal": 10.0,      //  Qty of Agent inserted  after a Cut/Bleed from a Animal
+            "qtyAgentKillinPlayer": 20.0,	//  Qty of Agent inserted  after Killing a Player 
+            "qtyAgentKillinZombie": 5.0,	//  Qty of Agent inserted  after Killing a Zombie
+	    "qtyAgentKillinAnimal": 5.0,	//  Qty of Agent inserted  after Killing a Animal
+            "qtyShockDEFFromEnemy": 30,		//  Qty of Shock given to a player that hit you with a melee weapon while defendinf ( 30 is basic value every stage has it's own multiplier growing 1.1,1.2,1.3,1.4,1.5)
+           
+        }
+    ],
+    "MentalTimer": [
+        {
+            "restTimer": 3.0,			//  Rest Check timer in SEC
+            "illCheckTimer": 900.0,		//  Auto Message giving Mental Condition in SEC
+            "songCheckTimer": 120.0,		//  Minim Sec after Stage 5 for Sound in SEC
+            "mentalSoundTimer": 60.0,		//  Minim Sec after Stage 1 for Sound in SEC
+            "morementalSoundTimer": 45.0,	//  Minim Sec after Stage 2 for Sound in SEC
+            "moremorementalSoundTimer": 30.0,	//  Minim Sec after Stage 3 for Sound in SEC
+            "suicideCheckTimer": 300.0		//  Minim Sec after Stage 5 for possible Suicide Action in SEC ( + a random internal number ) so this value is CIRCA
+            "suicideCheckTimerOffset": 5.0,     //  Offset to Suicide timer from 0 to THIS
+            "spawnZombiePhantomTimer3": 60.0,   // timer to spawn nightmares zombie in stage 3
+            "spawnZombiePhantomTimer4": 30.0,   // timer to spawn nightmares zombie in stage 4
+            "spawnZombieTimer5": 30.0           // timer to DEspawn nightmares zombie in stage 3
+        }
+    ],
+        "MentalTimerStagesImage": [
+        {
+            "timerMinStage1": 450.0,            // min time in SEC before spawning image stage 1
+            "timerMaxStage1": 600.0,            // max time in SEC spawning image stage 1
+            "timerMinStage2": 300.0,            // min time in SEC before spawning image stage 2
+            "timerMaxStage2": 450.0,		// max time in SEC spawning image stage 2
+            "timerMinStage3": 120.0,            // min time in SEC before spawning image stage 3
+            "timerMaxStage3": 220.0,            // max time in SEC spawning image stage 3
+            "timerMinStage4": 10.0,             // min time in SEC before spawning image stage 4
+            "timerMaxStage4": 40.0,		// max time in SEC spawning image stage 4
+            "timerMinStage5": 120.0,            // min time in SEC before spawning image stage 5
+            "timerMaxStage5": 60.0,		// max time in SEC spawning image stage 5
+            "timerMinStageFULL": 4.0,           // min time in SEC before spawning image stage MAX
+            "timerMaxStageFULL": 8.0            // max time in SEC spawning image stage MAX
+        }
+    ],
+    "DropTimer": [
+        {
+            "timerMinDrop": 400.0,       // time in sec DROP WEAPON min
+            "timerMaxDrop": 500.0         // time in sec DROP WEAPON max   OFFSET
+        }  
+    ],
+    "MentalZombieSpawn": [
+        {
+            "spawnZombieName": "ZmbM_HermitSkinny_Beige"      //mutant/zombie to spawn as real enemy > Stage5 ( can be set multiple ) 
+        },
+	{
+            "spawnZombieName": "ZmbM_BadAss"      //mutant/zombie to spawn as real enemy > Stage5 ( can be set multiple ) 
+        }
+    ]
+}
+-------------EXTRA JSON-----------
+{
+    "invasibility": 0.0,      			//  Grow per SEC
+    "maxCount": 1000.0,        			//  Agent MaxCount      KEEP these VALUES SAME as ABOVE
+    "immunoPotency" : 0;        //"grow when players immune system is at this level or lower"
+    "dieOffSpeed": 0.0	       			//  "how fast the agent dies off when not potent enough to grow(per sec)"
+    "obsessiveLaugh": 1,			// enable Growing Mad Laugh
+    "sleepingSound": 1,				// enable SleepSound
+    "sleepingSoundSet": "Sleep_SoundSet" 	// select SleepSoundSet  "Sleep_SoundSet" by default
+enum EStatLevels
+{
+    GREAT,      = 0
+    HIGH,	= 1
+    MEDIUM,     = 2
+    LOW,        = 3
+    CRITICAL,   = 4
+}
+
+
+IN STAGE 1 you will SUFFER SOUNDS, LAUGH 
+IN STAGE 2 you will SUFFER stage 1 + light BLUR
+IN STAGE 3 you will SUFFER stage 2 + More Sound and little Shaking of Hands + Random Image + + Drop Item
+IN STAGE 4 you will SUFFER stage 3 + More Sound + Medium Shaking + Limbing + Suicide
+IN STAGE 5 you will SUFFER stage 4 + More Sound + Heavy Shaking
+
+
+BloodTestKit will show more INFO

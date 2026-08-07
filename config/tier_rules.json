@@ -1,0 +1,114 @@
+{
+    "tiers": {
+        "1": {
+            "name": "Scavenger",
+            "zone": "CIVILIAN",
+            "nominal_min": 20,
+            "nominal_max": 100,
+            "lifetime_min": 1800,
+            "lifetime_max": 7200,
+            "allowed_usages": ["Coast", "Village", "Farm"],
+            "forbidden_categories": ["weapons"]
+        },
+        "2": {
+            "name": "Survivor",
+            "zone": "CIVILIAN",
+            "nominal_min": 10,
+            "nominal_max": 50,
+            "lifetime_min": 1800,
+            "lifetime_max": 7200,
+            "allowed_usages": ["Village", "Town", "Farm", "Industrial"],
+            "forbidden_categories": []
+        },
+        "3": {
+            "name": "Constable",
+            "zone": "CIVILIAN",
+            "nominal_min": 5,
+            "nominal_max": 25,
+            "lifetime_min": 3600,
+            "lifetime_max": 10800,
+            "allowed_usages": ["Police", "Town", "Firefighter", "Medic"],
+            "forbidden_categories": []
+        },
+        "4": {
+            "name": "Outdoorsman",
+            "zone": "CIVILIAN",
+            "nominal_min": 3,
+            "nominal_max": 15,
+            "lifetime_min": 3600,
+            "lifetime_max": 10800,
+            "allowed_usages": ["Hunting", "Farm", "Village"],
+            "forbidden_categories": []
+        },
+        "5": {
+            "name": "Insurgent",
+            "zone": "MILITARY",
+            "nominal_min": 5,
+            "nominal_max": 20,
+            "lifetime_min": 3600,
+            "lifetime_max": 10800,
+            "allowed_usages": ["Military"],
+            "forbidden_categories": []
+        },
+        "6": {
+            "name": "Infantry",
+            "zone": "MILITARY",
+            "nominal_min": 3,
+            "nominal_max": 12,
+            "lifetime_min": 3600,
+            "lifetime_max": 14400,
+            "allowed_usages": ["Military"],
+            "forbidden_categories": []
+        },
+        "7": {
+            "name": "Spec-Ops",
+            "zone": "MILITARY",
+            "nominal_min": 1,
+            "nominal_max": 6,
+            "lifetime_min": 7200,
+            "lifetime_max": 14400,
+            "allowed_usages": ["Military"],
+            "forbidden_categories": []
+        },
+        "8": {
+            "name": "Operator",
+            "zone": "ENDGAME",
+            "nominal_min": 1,
+            "nominal_max": 4,
+            "lifetime_min": 7200,
+            "lifetime_max": 21600,
+            "allowed_usages": ["Military"],
+            "forbidden_categories": []
+        },
+        "9": {
+            "name": "Black Market",
+            "zone": "ENDGAME",
+            "nominal_min": 0,
+            "nominal_max": 2,
+            "lifetime_min": 10800,
+            "lifetime_max": 28800,
+            "allowed_usages": ["Military"],
+            "forbidden_categories": []
+        },
+        "10": {
+            "name": "Mythic",
+            "zone": "ENDGAME",
+            "nominal_min": 0,
+            "nominal_max": 1,
+            "lifetime_min": 14400,
+            "lifetime_max": 86400,
+            "allowed_usages": ["Military"],
+            "forbidden_categories": []
+        },
+        "11": {
+            "name": "Admin",
+            "zone": "ADMIN",
+            "nominal_min": 0,
+            "nominal_max": 0,
+            "lifetime_min": 7200,
+            "lifetime_max": 7200,
+            "allowed_usages": [],
+            "forbidden_categories": []
+        }
+    }
+}

@@ -1,0 +1,9 @@
+/**
+ * resources.rc — Stelliferum Auditor Win32 Resources
+ * ====================================================
+ * Embeds WinSCP portable inside the executable as raw binary data.
+ * Extracted to .TEMP/ at runtime — WinSCP.exe is never modified.
+ */
+#include "resource_ids.h"
+
+IDR_WINSCP_EXE RCDATA "..\\libs\\winscp\\WinSCP.exe"

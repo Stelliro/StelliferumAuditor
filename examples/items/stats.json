@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-08-07 04:14 UTC",
+  "source_csv": "output/items.csv",
+  "total_items": 4499,
+  "tiers": {
+    "1": 256,
+    "2": 333,
+    "3": 1492,
+    "4": 449,
+    "5": 135,
+    "6": 376,
+    "7": 313,
+    "8": 263,
+    "10": 171,
+    "11": 706,
+    "12": 5
+  },
+  "categories": {
+    "clothes": 1337,
+    "weapons": 1304,
+    "uncategorized": 983,
+    "containers": 192,
+    "tools": 192,
+    "infected": 170,
+    "lootdispatch": 168,
+    "food": 96,
+    "generated": 20,
+    "vehiclesparts": 19,
+    "explosives": 18
+  },
+  "sources_top": {
+    "vanilla": 1929,
+    "@SNAFU Weapons / SNAFU types": 469,
+    "@Mortys Weapons / Morty types": 330,
+    "@Tactical Flava / new types": 207,
+    "@Mass sManyItemOverhaul / types(NOT A REPLACER)": 179,
+    "@Tactical Flava / TacticalFlava types": 122,
+    "@Mass sManyItemOverhaul / MassClothing": 121,
+    "@Mass sManyItemOverhaul / MMIO types": 101,
+    "@MMG - Mightys Military Gear / mmg types multica\u2026": 101,
+    "@WindstridesClothingPack / types": 98,
+    "@Blacks SNAFU Retex / ScarH types": 89,
+    "@Blacks SNAFU Retex / Kivaari types": 84
+  }
+}
