@@ -1,5 +1,6 @@
 
 #include "auditor.h"
+#include "cli_commands.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1343,10 +1344,29 @@ int main(int argc, char **argv) {
     util_init_logger();
     util_log(SEVERITY_INFO, "System Starting...");
 
+    /*
+     * Simple verbs: help | list | pull | pipeline | push | restore | run <recipe>
+     * Also bare recipe names from config/commands.ini.
+     * Keep long flags (--ftp-*, --regen, --headless) for scripts that already use them.
+     */
+    if (cli_is_simple_command(argc, argv)) {
+        int result;
+        {
+            extern void util_check_and_install_dependencies(void);
+            util_check_and_install_dependencies();
+        }
+        result = cli_run_simple_command(argc, argv);
+        util_close_job_object();
+        util_close_logger();
+        return result;
+    }
+
     /* Global help — never open the GUI for --help / -h / --ftp-help alone. */
     if (argc > 1 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0 ||
                      strcmp(argv[1], "--ftp-help") == 0 || strcmp(argv[1], "/?") == 0)) {
         cli_setup_console(0); /* attach parent if any; avoid hidden-only for help text */
+        cli_print_simple_help();
+        printf("\n--- Long flags (advanced) ---\n\n");
         print_ftp_cli_usage();
         util_close_logger();
         return 0;

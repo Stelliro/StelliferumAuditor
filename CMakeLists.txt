@@ -264,6 +264,7 @@ set(SOURCES
     src/integrity.c
     src/sfl_generator.c
     src/upload_daemon.c
+    src/cli_commands.c
 )
 
 set(HEADERS
@@ -272,6 +273,7 @@ set(HEADERS
     include/loot_policy.h
     include/resource_ids.h
     include/web_lookup.h
+    include/cli_commands.h
 )
 
 # Win32 resources (optional Windows-only embed of WinSCP.exe as RCDATA fallback).

@@ -84,14 +84,30 @@ build\bin\Release\StelliferumAuditor.exe
 ./build/bin/StelliferumAuditor
 ```
 
-### Standalone transfer CLI (same binary)
+### Simple headless commands (console + config)
 
-Headless FTP/SFTP — no GUI, no second product binary. Credentials come **only** from `config/ftp.ini` (never put `PASS` on the command line).
+Short verbs for Alpine / scripts / ops (quiet by default — no focus-stealing windows):
+
+```text
+StelliferumAuditor help
+StelliferumAuditor list [path]
+StelliferumAuditor pull                 # recursive REMOTE_ROOT -> LOCAL_ROOT
+StelliferumAuditor pipeline             # local sort/parse/audit/export
+StelliferumAuditor push                 # upload standard output/ pack
+StelliferumAuditor restore              # newest backups/*/restore_manifest.txt
+StelliferumAuditor run <recipe>         # named recipe from config/commands.ini
+```
+
+Optional recipes: copy `config/commands.ini.example` → `config/commands.ini`. Use `${REMOTE_ROOT}`, `${REMOTE_TYPES}`, etc. from `server_paths.ini`. Pipeline rules stay in `config/loot_policy.ini`.
+
+Long flags still work for advanced scripting:
 
 ```text
 StelliferumAuditor --ftp-list [path] [--remote <path>] [--dry-run]
 StelliferumAuditor --ftp-download [--remote <path>] [--local <path>] [--dry-run]
 StelliferumAuditor --ftp-upload   [--remote <path>] [--local <path>] [--dry-run]
+StelliferumAuditor --ftp-push-economy
+StelliferumAuditor --regen | --headless | --restore-last-upload
 ```
 
 | Flag | Meaning |
