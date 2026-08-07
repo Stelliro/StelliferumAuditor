@@ -1,0 +1,42 @@
+# 02-link-symbols — FULL batch
+DATE: 2026-08-07 16:25:12
+RESULT_LINK=PASS
+
+## CMake cache (selected)
+STELLI_USE_LIBCURL:BOOL=ON
+
+## Object: ftp_native.obj exists=True
+### Core symbols/strings
+ftp_native_download_file=YES
+ftp_native_upload_file=YES
+ftp_native_upload_batch=YES
+ftp_native_download_batch=YES
+ftp_native_list_directory=YES
+ftp_native_set_cancel_flag=YES
+CURLOPT_USERNAME=NO
+CURLOPT_PASSWORD=NO
+sftp://=NO
+ftp://=NO
+### Advanced / security strings
+ftp_native_download_recursive=YES
+ftp_native_create_restore_point=YES
+ftp_native_restore_from_manifest=YES
+ftp_native_verify_uploads=YES
+ftp_native_cleanup_remote_dir=YES
+ftp_native_download_core_files=YES
+ftp_native_upload_directory=YES
+KNOWN_HOSTS=YES
+HOST_KEY=YES
+
+## CMakeLists gates
+HAS_STELLI_USE_LIBCURL_DEFINE=True
+HAS_FTP_NATIVE_SOURCE=True
+RESOURCES_RC_OPTIONAL_WINSCP_PRESENT=True
+libs/winscp/WinSCP.exe exists=True
+
+## P2 optional WinSCP
+NOTE: resources.rc only when libs/winscp present; not required on Linux.
+RESULT_P2_OPTIONAL_WINSCP=PASS
+
+## Expected protocols
+FTP+SFTP via FetchContent libcurl+libssh2 (WinCNG on Windows)

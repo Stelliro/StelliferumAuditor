@@ -1,0 +1,13 @@
+# 03-cli-ftp-help — FULL batch
+DATE: 2026-08-07 16:28:24
+BINARY=D:\STELLIROS_WORKSHOP\DayZ Server\StelliferumAuditor\build\bin\Release\StelliferumAuditor.exe
+MAIN_HAS_--ftp-list=True
+MAIN_HAS_--ftp-download=True
+MAIN_HAS_--ftp-upload=True
+MAIN_HAS_--remote=True
+MAIN_HAS_--dry-run=True
+RESULT_P3=PASS
+DRY_RUN_EXITS=0,0,0
+BACKEND_NATIVE=True
+SESSION_LOG_SAMPLE=qa/native-ftp/04-cli-session-log-sample.txt
+SOURCE_FLAGS: main.c defines --ftp-list/--ftp-download/--ftp-upload/--remote/--local/--dry-run/--ftp-help

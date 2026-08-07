@@ -1,6 +1,30 @@
 # Copy this file to ftp.ini and fill in your credentials.
 # ftp.ini is gitignored — never commit real passwords.
+#
+# Used by GUI, --headless, --restore-last-upload, and standalone transfer CLI:
+#   StelliferumAuditor --ftp-list [path]
+#   StelliferumAuditor --ftp-download [--remote path] [--local path] [--dry-run]
+#   StelliferumAuditor --ftp-upload   [--remote path] [--local path] [--dry-run]
+# Never pass PASS on the command line — credentials are read only from this file.
 HOST=your.server.hostname
 PORT=22
 USER=your_username
 PASS=your_password
+
+# ---------------------------------------------------------------------------
+# SFTP host-key verification (native libcurl path only; ports 22/2222/8827)
+# ---------------------------------------------------------------------------
+# OpenSSH-style known_hosts file. Relative paths are from the process CWD.
+# Default if omitted: config/known_hosts
+KNOWN_HOSTS=config/known_hosts
+
+# Optional SHA256 fingerprint pin of the server host key (base64).
+# Accepts either raw base64 or "SHA256:...." from: ssh-keygen -lf <(ssh-keyscan host)
+# When set, libcurl requires the remote key to match this fingerprint.
+# HOST_KEY_PIN=SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# First-connect / unknown-host policy (native SFTP):
+#   pin   — accept once and append the host key to KNOWN_HOSTS (default)
+#   fail  — reject hosts not already in KNOWN_HOSTS (strict; also rejects mismatch)
+#   trust — accept any host key without verification (INSECURE; debug only)
+HOST_KEY_POLICY=pin

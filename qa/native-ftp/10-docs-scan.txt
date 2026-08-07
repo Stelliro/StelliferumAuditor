@@ -1,0 +1,24 @@
+# 10-docs-scan — FULL batch (P8)
+DATE: 2026-08-07 16:25:46
+RESULT_DOCS_README_SHIP=PASS
+FAILS=
+
+## Checks
+README --ftp-list=True
+README --ftp-download=True
+README --ftp-upload=True
+README native/libcurl=True
+README Linux no WinSCP=True
+README host-key/known_hosts=True
+README roadmap #9=True
+README roadmap #5=True
+README roadmap #4=True
+README roadmap #7=True
+BUILD.md libcurl=True
+BUILD.md WinSCP optional=True
+BRIEF present=True
+
+## Flag cross-read main.c vs README
+main --ftp-list= readme=True
+main --ftp-download= readme=True
+main --ftp-upload= readme=True

@@ -7,6 +7,7 @@ This guide covers building the Stelliferum Auditor on Windows, macOS, and Linux.
 The project uses:
 - **CMake 3.16+** for cross-platform builds
 - **Raylib 5.5** for UI/graphics
+- **libcurl** (FTP + SFTP via libssh2) for native transfers — FetchContent by default
 - **C11** standard
 
 ---
@@ -97,12 +98,31 @@ make -j$(nproc)
 ```bash
 sudo apt-get update
 sudo apt-get install build-essential cmake git
+# OpenSSL headers: required when FetchContent builds curl (default STELLI_FETCH_LIBCURL=ON)
+sudo apt-get install libssl-dev
+# Optional GUI/X11 deps for raylib on desktop Linux (headless CLI still needs a linkable GL stack)
+# sudo apt-get install libgl1-mesa-dev libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev
+# Optional (when STELLI_FETCH_LIBCURL=OFF): system curl with FTP + SFTP
+# sudo apt-get install libcurl4-openssl-dev libssh2-1-dev
 ```
 
 ### Linux (Fedora/RHEL)
 ```bash
-sudo dnf install gcc cmake git
+sudo dnf install gcc gcc-c++ cmake git openssl-devel
+# Optional raylib desktop deps: mesa-libGL-devel libX11-devel ...
+# Optional system curl+SFTP: libcurl-devel libssh2-devel
 ```
+
+### Linux transfer path (no WinSCP)
+
+| Item | Requirement |
+|------|-------------|
+| **WinSCP.exe / `resources.rc`** | **Not used** — configure and build must succeed without `libs/winscp` |
+| **Transfer backend** | **Native libcurl only** (`STELLI_USE_LIBCURL=ON`, default) — FTP + SFTP via libssh2 |
+| **Dependency installer** | Soft-skips on non-Windows (no PE patch / no WinSCP extract) |
+| **CLI** | Same binary: `--ftp-list` / `--ftp-download` / `--ftp-upload` (see README) |
+
+If configure cannot link libcurl on Linux while `STELLI_USE_LIBCURL=ON`, CMake **fails** (there is no WinSCP fallback). Install OpenSSL dev headers and/or use system curl with SFTP, or keep `STELLI_FETCH_LIBCURL=ON` (default).
 
 ---
 
@@ -190,7 +210,36 @@ cmake .. -DUSE_SYSTEM_RAYLIB=ON
 
 # Custom install prefix
 cmake .. -DCMAKE_INSTALL_PREFIX=/opt/stelliferum
+
+# --- Native FTP/SFTP (libcurl) ---
+# Default: ON — defines STELLI_USE_LIBCURL and links libcurl with FTP + SFTP (libssh2).
+cmake .. -DSTELLI_USE_LIBCURL=ON
+
+# Fetch libssh2 + curl via FetchContent (default ON). Produces portable FTP+SFTP.
+cmake .. -DSTELLI_FETCH_LIBCURL=ON
+
+# Use a preinstalled CURL::libcurl only (no FetchContent of curl/libssh2).
+# Ensure that build of curl was compiled with FTP and (for SFTP) libssh2.
+cmake .. -DSTELLI_USE_LIBCURL=ON -DSTELLI_FETCH_LIBCURL=OFF
+
+# Disable native backend entirely (Windows may still use optional WinSCP embed).
+cmake .. -DSTELLI_USE_LIBCURL=OFF
 ```
+
+### Native transfer / WinSCP notes (roadmap #5 / #7)
+
+| Platform | Native libcurl | WinSCP `resources.rc` | Transfer rule |
+|----------|----------------|------------------------|---------------|
+| Windows  | Default ON (FetchContent curl + libssh2, Schannel + WinCNG) | **Optional** — embedded only if `libs/winscp/WinSCP.exe` exists | Native **preferred**; WinSCP optional legacy fallback |
+| Linux    | Default ON (FetchContent; needs OpenSSL dev headers for TLS) | **Not used** — no hard require of `WinSCP.exe` or `resources.rc` | Native **required** |
+| macOS    | Default ON | **Not used** | Native **required** |
+
+- Compile definition `STELLI_USE_LIBCURL=1` is applied to the app target when libcurl is linked.
+- First configure with FetchContent downloads **libssh2** and **curl** (network + Git required).
+- On Linux/macOS, `util_check_and_install_dependencies()` is a soft-skip (no WinSCP extract/PE patch).
+- Disabling native on non-Windows leaves FTP/SFTP unavailable (CMake warns; with `STELLI_USE_LIBCURL=ON` and link failure, CMake fatals).
+- **CLI** (same binary): `--ftp-list` / `--ftp-download` / `--ftp-upload` + `--remote` / `--local` / `--dry-run` — documented in root [README.md](../README.md).
+- **Security (native):** credentials only from `config/ftp.ini` (never argv); SFTP `KNOWN_HOSTS` / `HOST_KEY_PIN` / `HOST_KEY_POLICY` — see `config/ftp.ini.example`.
 
 ---
 

@@ -83,18 +83,70 @@ static void get_winscp_absolute_path(char *buffer, size_t size) {
 }
 
 // ============================================================================
-// WINSCP CANCEL SUPPORT
+// BACKEND DISPATCH — prefer native libcurl; WinSCP optional Windows fallback
 // ============================================================================
+// Selection rules (ftp-backend-dispatch + ftp-native-advanced + linux-no-winscp):
+//   1. When STELLI_USE_LIBCURL and ftp_native_backend_available() => use native.
+//   2. Windows only: fall back to existing WinSCP path if native unavailable.
+//   3. Linux/macOS: native is the REQUIRED transfer path — never require WinSCP
+//      extraction, PE patch, or resources.rc; run_winscp_* refuses off Windows.
+//   4. Advanced ops (recursive/core/upload_dir/cleanup/verify/restore) also
+//      prefer native when available — no WinSCP log scraping on native path.
+//
+// SECURITY NOTE — WinSCP path is LEGACY / WEAKER than native:
+//   - Passwords are passed as WinSCP /parameter argv tokens (visible on the
+//     process command line briefly; not used on the native libcurl path).
+//   - Session scripts under .TEMP/ use open ... -hostkey=* (trust-any host key).
+//   - Prefer native (STELLI_USE_LIBCURL) for credential hygiene + host-key pin.
 
 static volatile bool *s_winscp_cancel_flag = NULL;
 static volatile int  *s_winscp_upload_counter = NULL;
 
+/** True when public ftp_* should route core ops to libcurl (native preferred). */
+static int ftp_use_native_backend(void) {
+#ifdef STELLI_USE_LIBCURL
+    return ftp_native_backend_available() ? 1 : 0;
+#else
+    return 0;
+#endif
+}
+
+/** WinSCP path is allowed only on Windows as optional fallback. */
+static int ftp_winscp_fallback_allowed(void) {
+#ifdef _WIN32
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+/**
+ * Off Windows, transfers must use native libcurl. Call after
+ * ftp_use_native_backend() is false to avoid walking into WinSCP scripts.
+ * Returns true when the caller should abort (no usable backend).
+ */
+static int ftp_require_native_or_fail(const char *op_name) {
+    if (ftp_use_native_backend())
+        return 0;
+    if (ftp_winscp_fallback_allowed())
+        return 0;
+    util_log(SEVERITY_ERROR,
+             "%s: no transfer backend on this platform. "
+             "Build with STELLI_USE_LIBCURL (native libcurl is required; "
+             "WinSCP is Windows-only).",
+             op_name ? op_name : "FTP");
+    return 1;
+}
+
 void ftp_set_cancel_flag(volatile bool *flag) {
     s_winscp_cancel_flag = flag;
+    /* Dual-wire: native path reads its own flag; always keep both in sync. */
+    ftp_native_set_cancel_flag(flag);
 }
 
 void ftp_set_upload_counter(volatile int *counter) {
     s_winscp_upload_counter = counter;
+    ftp_native_set_upload_counter(counter);
 }
 
 // ============================================================================
@@ -362,21 +414,38 @@ static int run_winscp_piped(const char *cmd_line, const char *capture_file) {
 
     return (int)exit_code;
 #else
-    // Fallback for non-Windows
-    if (capture_file) {
-        char full_cmd[4200];
-        snprintf(full_cmd, sizeof(full_cmd), "%s > %s 2>&1", cmd_line, capture_file);
-        return system(full_cmd);
-    }
-    return system(cmd_line);
+    /* linux-no-winscp: never spawn WinSCP (or shell out WinSCP cmdline) off Windows. */
+    (void)cmd_line;
+    (void)capture_file;
+    util_log(SEVERITY_ERROR,
+             "WinSCP process path is not available on this platform "
+             "(native libcurl is the required transfer backend).");
+    return -1;
 #endif
 }
 
+/*
+ * LEGACY Windows-only fallback. Weaker security than native libcurl:
+ * credentials on CreateProcess /parameter argv; -hostkey=* / -certificate=*
+ * trusts any key. Native path never uses this when STELLI_USE_LIBCURL prefers it.
+ */
 static bool run_winscp_script(const char *host, int port, const char *user, const char *pass, const char *script_content) {
+    /* Linux/macOS: never require WinSCP for transfer — native backend only. */
+    if (!ftp_winscp_fallback_allowed()) {
+        util_log(SEVERITY_ERROR,
+                 "WinSCP fallback is not available on this platform. "
+                 "Use the native libcurl backend (STELLI_USE_LIBCURL).");
+        (void)host; (void)port; (void)user; (void)pass; (void)script_content;
+        return false;
+    }
+
     char winscp_path[512];
     get_winscp_absolute_path(winscp_path, sizeof(winscp_path));
     
-    util_log(SEVERITY_INFO, "WinSCP: Launching from '%s'...", winscp_path);
+    util_log(SEVERITY_WARNING,
+             "WinSCP (legacy/weaker Windows fallback): Launching from '%s' "
+             "(prefer native libcurl for host-key pin + no password on argv)...",
+             winscp_path);
     
     FILE *f = fopen(winscp_path, "r");
     if (!f) {
@@ -398,6 +467,7 @@ static bool run_winscp_script(const char *host, int port, const char *user, cons
     fprintf(script, "option confirm off\n");
     fprintf(script, "option reconnecttime 120\n");
     
+    /* -hostkey=* / -certificate=* = trust-any (weaker than native known_hosts). */
     if (port == 8827 || port == 22 || port == 2222) {
         fprintf(script, "open sftp://%%1%%:%%2%%@%s:%d/ -hostkey=* "
                         "-rawsettings PingType=1 PingInterval=10 Timeout=120\n", host, port);
@@ -469,6 +539,13 @@ static void extract_remote_dir(const char *remote_path, char *dir_out, size_t di
 }
 
 bool ftp_download_file(const char *host, int port, const char *user, const char *pass, const char *remote_path, const char *local_path) {
+    /* Prefer native libcurl when compiled in (no password on argv / no TEMP scripts). */
+    if (ftp_use_native_backend()) {
+        return ftp_native_download_file(host, port, user, pass, remote_path, local_path);
+    }
+    if (ftp_require_native_or_fail("ftp_download_file"))
+        return false;
+
     // Resolve local path to absolute to avoid CWD/WinSCP path resolution mismatches
     char abs_local[MAX_PATH_LEN];
     resolve_absolute_path(local_path, abs_local, sizeof(abs_local));
@@ -493,6 +570,12 @@ bool ftp_download_file(const char *host, int port, const char *user, const char 
 }
 
 bool ftp_upload_file(const char *host, int port, const char *user, const char *pass, const char *local_path, const char *remote_path) {
+    if (ftp_use_native_backend()) {
+        return ftp_native_upload_file(host, port, user, pass, local_path, remote_path);
+    }
+    if (ftp_require_native_or_fail("ftp_upload_file"))
+        return false;
+
     // Resolve local path to absolute to avoid CWD/WinSCP path resolution mismatches
     char abs_local[MAX_PATH_LEN];
     resolve_absolute_path(local_path, abs_local, sizeof(abs_local));
@@ -523,6 +606,14 @@ bool ftp_upload_batch(const char *host, int port, const char *user, const char *
                      const char **local_paths, const char **remote_paths, int count,
                      int *out_succeeded, int *out_failed) {
     if (!local_paths || !remote_paths || count <= 0) return false;
+
+    if (ftp_use_native_backend()) {
+        return ftp_native_upload_batch(host, port, user, pass,
+                                       local_paths, remote_paths, count,
+                                       out_succeeded, out_failed);
+    }
+    if (ftp_require_native_or_fail("ftp_upload_batch"))
+        return false;
 
     // Pre-validate local files and resolve to absolute paths.
     // Build parallel arrays of resolved locals and their remote dirs.
@@ -688,6 +779,11 @@ bool ftp_upload_batch(const char *host, int port, const char *user, const char *
 }
 
 bool ftp_upload_directory(const char *host, int port, const char *user, const char *pass, const char *local_dir, const char *remote_dir) {
+    if (ftp_use_native_backend()) {
+        return ftp_native_upload_directory(host, port, user, pass, local_dir, remote_dir);
+    }
+    if (ftp_require_native_or_fail("ftp_upload_directory"))
+        return false;
     char script[4096];
     // synchronize remote: upload all files from local_dir to remote_dir, creating dirs as needed
     snprintf(script, sizeof(script),
@@ -697,6 +793,11 @@ bool ftp_upload_directory(const char *host, int port, const char *user, const ch
 }
 
 bool ftp_download_recursive(const char *host, int port, const char *user, const char *pass, const char *remote_dir, const char *local_dir) {
+    if (ftp_use_native_backend()) {
+        return ftp_native_download_recursive(host, port, user, pass, remote_dir, local_dir);
+    }
+    if (ftp_require_native_or_fail("ftp_download_recursive"))
+        return false;
     char script[4096];
     util_log(SEVERITY_INFO, "Hunter: Incremental download from '%s' — only changed files will transfer.", remote_dir);
 
@@ -745,6 +846,13 @@ bool ftp_download_recursive(const char *host, int port, const char *user, const 
 bool ftp_download_batch(const char *host, int port, const char *user, const char *pass, const char **remote_paths, const char **local_paths, int count) {
     if (!remote_paths || !local_paths || count <= 0) return false;
 
+    if (ftp_use_native_backend()) {
+        return ftp_native_download_batch(host, port, user, pass,
+                                         remote_paths, local_paths, count);
+    }
+    if (ftp_require_native_or_fail("ftp_download_batch"))
+        return false;
+
     char script[4096];
     script[0] = '\0';
     for (int i = 0; i < count; i++) {
@@ -766,6 +874,11 @@ bool ftp_download_batch(const char *host, int port, const char *user, const char
 
 bool ftp_download_core_files(const char *host, int port, const char *user, const char *pass, const char *remote_root, const char *local_root) {
     if (!remote_root || !local_root) return false;
+    if (ftp_use_native_backend()) {
+        return ftp_native_download_core_files(host, port, user, pass, remote_root, local_root);
+    }
+    if (ftp_require_native_or_fail("ftp_download_core_files"))
+        return false;
     // Fallback: synchronize ALL XML+JSON files by size comparison.
     // Same approach as ftp_download_recursive but XML+JSON only (no cfg/ini/txt).
     char abs_local[MAX_PATH_LEN];
@@ -882,7 +995,23 @@ bool ftp_list_directory(const char *host, int port, const char *user, const char
     if (!browser) return false;
     browser->count = 0;
     browser->error[0] = '\0';
-    strncpy(browser->current_path, remote_path, sizeof(browser->current_path) - 1);
+    if (remote_path)
+        strncpy(browser->current_path, remote_path, sizeof(browser->current_path) - 1);
+    else
+        browser->current_path[0] = '\0';
+
+    /* Prefer native list (no password argv / TEMP scripts). */
+    if (ftp_use_native_backend()) {
+        return ftp_native_list_directory(host, port, user, pass, remote_path, browser);
+    }
+
+    if (!ftp_winscp_fallback_allowed()) {
+        snprintf(browser->error, sizeof(browser->error),
+                 "No FTP backend: build with STELLI_USE_LIBCURL "
+                 "(native required; WinSCP is Windows-only)");
+        util_log(SEVERITY_ERROR, "ftp_list_directory: %s", browser->error);
+        return false;
+    }
 
     char winscp_path[512];
     get_winscp_absolute_path(winscp_path, sizeof(winscp_path));
@@ -909,6 +1038,7 @@ bool ftp_list_directory(const char *host, int port, const char *user, const char
     fprintf(script, "option batch on\n");
     fprintf(script, "option confirm off\n");
     fprintf(script, "option reconnecttime 120\n");
+    /* Legacy WinSCP: -hostkey=* is weaker than native known_hosts/HOST_KEY_PIN. */
     if (port == 8827 || port == 22 || port == 2222) {
         fprintf(script, "open sftp://%%1%%:%%2%%@%s:%d/ -hostkey=* "
                         "-rawsettings PingType=1 PingInterval=10 Timeout=120\n", host, port);
@@ -979,6 +1109,12 @@ bool ftp_cleanup_remote_dir(const char *host, int port, const char *user, const 
                             const char *remote_dir) {
     if (!host || !user || !pass || !remote_dir) return false;
 
+    if (ftp_use_native_backend()) {
+        return ftp_native_cleanup_remote_dir(host, port, user, pass, remote_dir);
+    }
+    if (ftp_require_native_or_fail("ftp_cleanup_remote_dir"))
+        return false;
+
     // WinSCP rm supports filemask/wildcards.
     // Pattern: 3-digit prefix, double underscore, anything  — e.g. 001__*.
     // We run with batch continue so missing matches don't abort.
@@ -1004,6 +1140,13 @@ bool ftp_cleanup_remote_dir(const char *host, int port, const char *user, const 
 bool ftp_verify_uploads(const char *host, int port, const char *user, const char *pass,
                         const char **local_paths, const char **remote_paths, int count) {
     if (!host || !user || !pass || !local_paths || !remote_paths || count <= 0) return false;
+
+    if (ftp_use_native_backend()) {
+        return ftp_native_verify_uploads(host, port, user, pass,
+                                         local_paths, remote_paths, count);
+    }
+    if (ftp_require_native_or_fail("ftp_verify_uploads"))
+        return false;
 
     util_log(SEVERITY_INFO, "Upload integrity check: verifying %d file(s) on server...", count);
 
@@ -1155,6 +1298,14 @@ bool ftp_create_restore_point(const char *host, int port, const char *user, cons
         return false;
     }
 
+    if (ftp_use_native_backend()) {
+        return ftp_native_create_restore_point(host, port, user, pass,
+                                               remote_paths, count,
+                                               backup_dir, manifest_path);
+    }
+    if (ftp_require_native_or_fail("ftp_create_restore_point"))
+        return false;
+
     ensure_directory_tree(backup_dir);
 
     // Pre-build the manifest and local backup paths, then download all in one session.
@@ -1282,6 +1433,12 @@ bool ftp_create_restore_point(const char *host, int port, const char *user, cons
 bool ftp_restore_from_manifest(const char *host, int port, const char *user, const char *pass,
                                const char *manifest_path) {
     if (!host || !user || !pass || !manifest_path) return false;
+
+    if (ftp_use_native_backend()) {
+        return ftp_native_restore_from_manifest(host, port, user, pass, manifest_path);
+    }
+    if (ftp_require_native_or_fail("ftp_restore_from_manifest"))
+        return false;
 
     FILE *manifest = fopen(manifest_path, "r");
     if (!manifest) {

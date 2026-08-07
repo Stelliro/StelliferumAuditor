@@ -1,0 +1,33 @@
+# 07-ftp-api-consumers — FULL batch (P6/P7)
+DATE: 2026-08-07 16:25:46
+
+## Public API in auditor.h
+ftp_download_file header=YES
+ftp_upload_file header=YES
+ftp_upload_batch header=YES
+ftp_download_batch header=YES
+ftp_list_directory header=YES
+ftp_set_cancel_flag header=YES
+ftp_download_recursive header=YES
+ftp_create_restore_point header=YES
+ftp_restore_from_manifest header=YES
+ftp_verify_uploads header=YES
+ftp_cleanup_remote_dir header=YES
+ftp_download_core_files header=YES
+ftp_upload_directory header=YES
+RESULT_ABI=PASS
+
+## Consumers still reference ftp_* (compile-linked via same headers)
+ui.cpp has ftp_ calls=YES
+upload_daemon.c has ftp_ calls=YES
+main.c has ftp_ calls=YES
+
+## Dispatch (P7)
+ftp_use_native_backend=True
+ftp_native_* calls in ftp_manager=True
+advanced native dispatch=True
+winscp fallback guards=True
+dependency soft-skip non-Windows markers present=True
+RESULT_DISPATCH=PASS
+RESULT_ADVANCED_NATIVE=PASS
+RESULT_P7_NATIVE_PREFERRED=PASS

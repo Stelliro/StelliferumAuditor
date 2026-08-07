@@ -1,0 +1,79 @@
+{
+  "hard_exits": {
+    "CreateProcess_code_lines": 0,
+    "P5_CMAKE_CONFIGURE_EXIT": 0,
+    "CLI_DRY_RUN_EXITS": "0,0,0",
+    "CTEST_SKIP": 1,
+    "BUILD_EXIT": 0
+  },
+  "artifacts": [
+    "qa/native-ftp/01-windows-release-build.log",
+    "qa/native-ftp/01-windows-release-build-compile.log",
+    "qa/native-ftp/02-link-symbols.txt",
+    "qa/native-ftp/03-cli-ftp-help.txt",
+    "qa/native-ftp/03-cli-ftp-help-raw.txt",
+    "qa/native-ftp/04-cli-ftp-smoke.txt",
+    "qa/native-ftp/04-cli-session-log-sample.txt",
+    "qa/native-ftp/05-no-password-argv.txt",
+    "qa/native-ftp/06-linux-or-unix-configure.log",
+    "qa/native-ftp/07-ftp-api-consumers.txt",
+    "qa/native-ftp/08-batch-acceptance.md",
+    "qa/native-ftp/09-ctest.txt",
+    "qa/native-ftp/10-docs-scan.txt",
+    "qa/native-ftp/11-protocol-cache.txt",
+    "qa/native-ftp/12-visual-perf-notes.txt",
+    "qa/native-ftp/track-notes.md",
+    "qa/native-ftp/pipeline_report.md",
+    "qa/native-ftp/pipeline_report.json",
+    "qa/native-ftp/README.md"
+  ],
+  "track_results": [
+    {
+      "ok": true,
+      "note": "BUILD_EXIT=0; STELLI_USE_LIBCURL; FTP+SFTP libssh2",
+      "track_id": "cmake-libcurl"
+    },
+    {
+      "ok": true,
+      "note": "core ftp_native_*; CURLOPT creds; CreateProcess_code=0",
+      "track_id": "ftp-native-core"
+    },
+    {
+      "ok": true,
+      "note": "native preferred; WinSCP Windows-only fallback",
+      "track_id": "ftp-backend-dispatch"
+    },
+    {
+      "ok": true,
+      "note": "host-key+P4 PASS; session known_hosts policy=pin",
+      "track_id": "transfer-security"
+    },
+    {
+      "ok": true,
+      "note": "recursive/restore/verify/cleanup native",
+      "track_id": "ftp-native-advanced"
+    },
+    {
+      "ok": true,
+      "note": "dry-run EXITS=0,0,0 backend=native libcurl",
+      "track_id": "cli-standalone-ftp"
+    },
+    {
+      "ok": true,
+      "note": "P5 LIVE EXIT=0; structural no WinSCP hard-req",
+      "track_id": "linux-no-winscp"
+    },
+    {
+      "ok": true,
+      "note": "RESULT_DOCS_README_SHIP=PASS",
+      "track_id": "docs-readme-ship"
+    }
+  ],
+  "passed": true,
+  "summary": "FULL batch gate PASS: Windows Release BUILD_EXIT=0, CLI dry-run 0,0,0 backend=native libcurl, all 8 tracks ok, P1-P8 evidence on disk.",
+  "evidence": "BUILD_EXIT=0; CTEST_SKIP=1; CLI_DRY_RUN_EXITS=0,0,0; SESSION backend=native libcurl (libcurl/8.11.1-DEV Schannel libssh2/1.11.1_DEV); CreateProcess_code_lines=0; RESULT_LINK=PASS; RESULT_P3=PASS; RESULT_SMOKE=PASS; RESULT_LOG_EVIDENCE=PASS; RESULT_TRANSFER_SECURITY_TRACK=PASS; RESULT_LINUX_NO_WINSCP_TRACK=PASS; RESULT_DOCS_README_SHIP=PASS; P5_CMAKE_CONFIGURE_EXIT=0",
+  "mode": "FULL",
+  "qa_dir": "qa/native-ftp",
+  "date": "2026-08-07 16:29:07",
+  "failures": []
+}

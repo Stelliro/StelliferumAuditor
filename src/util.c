@@ -133,22 +133,31 @@ void util_setup_console(void) {
         }
     }
 
-    // Banner
+    // Banner (CLI / headless — native libcurl preferred; WinSCP optional Windows fallback)
     if (console_colors_enabled) {
         printf("\033[33m");
         printf("==========================================================\n");
         printf("  STELLIFERUM AUDITOR  \xe2\x80\x94  Active Log\n");
         printf("  This window shows real-time operation logs.\n");
-        printf("  WinSCP transfer activity will appear here.\n");
+        printf("  Transfer: native FTP/SFTP (libcurl); WinSCP optional.\n");
         printf("==========================================================\n");
         printf("\033[0m\n");
     } else {
         printf("==========================================================\n");
         printf("  STELLIFERUM AUDITOR  - Active Log\n");
         printf("  This window shows real-time operation logs.\n");
-        printf("  WinSCP transfer activity will appear here.\n");
+        printf("  Transfer: native FTP/SFTP (libcurl); WinSCP optional.\n");
         printf("==========================================================\n\n");
     }
+    fflush(stdout);
+#else
+    /* Linux/macOS: process already has a TTY for CLI/headless — no WinSCP,
+     * no AllocConsole. Native libcurl is the required transfer path. */
+    console_colors_enabled = true;
+    printf("==========================================================\n");
+    printf("  STELLIFERUM AUDITOR  - Active Log\n");
+    printf("  Transfer: native FTP/SFTP (libcurl); WinSCP not used.\n");
+    printf("==========================================================\n\n");
     fflush(stdout);
 #endif
 }

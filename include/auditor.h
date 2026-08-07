@@ -567,6 +567,46 @@ bool ftp_download_batch(const char *host, int port, const char *user, const char
 bool ftp_download_core_files(const char *host, int port, const char *user, const char *pass, const char *remote_root, const char *local_root);
 bool ftp_upload_directory(const char *host, int port, const char *user, const char *pass, const char *local_dir, const char *remote_dir);
 bool ftp_list_directory(const char *host, int port, const char *user, const char *pass, const char *remote_path, RemoteFileBrowser *browser);
+
+// Native libcurl backend mirrors (src/ftp_native.c). Same signatures as public
+// ftp_* core ops; dispatch track routes entry points here when STELLI_USE_LIBCURL.
+// Credentials are never placed on process argv or plaintext temp scripts.
+// SFTP host-key (config/ftp.ini): KNOWN_HOSTS, HOST_KEY_PIN, HOST_KEY_POLICY
+// (pin|fail|trust) — first-connect pin defaults to config/known_hosts.
+int  ftp_native_backend_available(void);
+int  ftp_native_protocols_ok(void);
+const char *ftp_native_curl_version_string(void);
+void ftp_native_set_cancel_flag(volatile bool *flag);
+void ftp_native_set_upload_counter(volatile int *counter);
+/** Re-read host-key / known_hosts settings from config/ftp.ini (native path). */
+void ftp_native_reload_security_config(void);
+bool ftp_native_download_file(const char *host, int port, const char *user, const char *pass,
+                              const char *remote_path, const char *local_path);
+bool ftp_native_upload_file(const char *host, int port, const char *user, const char *pass,
+                            const char *local_path, const char *remote_path);
+bool ftp_native_upload_batch(const char *host, int port, const char *user, const char *pass,
+                             const char **local_paths, const char **remote_paths, int count,
+                             int *out_succeeded, int *out_failed);
+bool ftp_native_download_batch(const char *host, int port, const char *user, const char *pass,
+                               const char **remote_paths, const char **local_paths, int count);
+bool ftp_native_list_directory(const char *host, int port, const char *user, const char *pass,
+                               const char *remote_path, RemoteFileBrowser *browser);
+/* Advanced native mirrors (ftp-native-advanced) — no WinSCP log scraping. */
+bool ftp_native_download_recursive(const char *host, int port, const char *user, const char *pass,
+                                   const char *remote_dir, const char *local_dir);
+bool ftp_native_download_core_files(const char *host, int port, const char *user, const char *pass,
+                                    const char *remote_root, const char *local_root);
+bool ftp_native_upload_directory(const char *host, int port, const char *user, const char *pass,
+                                 const char *local_dir, const char *remote_dir);
+bool ftp_native_cleanup_remote_dir(const char *host, int port, const char *user, const char *pass,
+                                   const char *remote_dir);
+bool ftp_native_verify_uploads(const char *host, int port, const char *user, const char *pass,
+                               const char **local_paths, const char **remote_paths, int count);
+bool ftp_native_create_restore_point(const char *host, int port, const char *user, const char *pass,
+                                     const char **remote_paths, int count,
+                                     const char *backup_dir, const char *manifest_path);
+bool ftp_native_restore_from_manifest(const char *host, int port, const char *user, const char *pass,
+                                      const char *manifest_path);
 bool ftp_create_restore_point(const char *host, int port, const char *user, const char *pass,
                               const char **remote_paths, int count,
                               const char *backup_dir, const char *manifest_path);

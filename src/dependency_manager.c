@@ -59,7 +59,9 @@ static bool extract_resource_to_file(int resource_id, const char *dest_path) {
 
 /**
  * Create WinSCP.com (console version) from WinSCP.exe (GUI version).
- * 
+ *
+ * Windows-only optional fallback path — never used on Linux/macOS (no PE patch).
+ *
  * WinSCP.com and WinSCP.exe are identical binaries — the only difference is
  * the PE subsystem field: GUI (2) vs Console (3). The console version is
  * required for scripting because system() needs a console-subsystem process
@@ -68,6 +70,7 @@ static bool extract_resource_to_file(int resource_id, const char *dest_path) {
  * This copies the file and patches exactly ONE word in the PE header.
  * The original WinSCP.exe is never modified.
  */
+#ifdef _WIN32
 static bool create_console_variant(const char *exe_path, const char *com_path) {
     FILE *src = fopen(exe_path, "rb");
     if (!src) return false;
@@ -135,15 +138,34 @@ static bool create_console_variant(const char *exe_path, const char *com_path) {
 
     return true;
 }
+#endif /* _WIN32 */
 
 void util_check_and_install_dependencies() {
+    /*
+     * linux-no-winscp / roadmap #7:
+     * WinSCP extract + PE subsystem patch is Windows-only optional fallback.
+     * Linux/macOS: soft-skip / no-op — never extract, PE-patch, or require
+     * WinSCP.exe for transfers. Native libcurl is the required path.
+     */
+#ifndef _WIN32
+    util_log(SEVERITY_INFO,
+             "Dependency Check: soft-skip on non-Windows — WinSCP not used "
+             "(transfer path: native FTP/SFTP via libcurl only).");
+#ifdef STELLI_USE_LIBCURL
+    util_log(SEVERITY_INFO,
+             "Dependency Check: STELLI_USE_LIBCURL enabled (native backend ready).");
+#else
+    util_log(SEVERITY_WARNING,
+             "Dependency Check: STELLI_USE_LIBCURL not built — FTP/SFTP "
+             "unavailable on this platform (no WinSCP fallback).");
+#endif
+    return;
+#else
     // Build paths next to the running executable
     char exe_dir[MAX_PATH_LEN] = ".";
-#ifdef _WIN32
     GetModuleFileNameA(NULL, exe_dir, MAX_PATH_LEN);
     char *slash = strrchr(exe_dir, '\\');
     if (slash) *slash = '\0';
-#endif
 
     char winscp_exe[MAX_PATH_LEN];
     char winscp_com[MAX_PATH_LEN];
@@ -154,17 +176,30 @@ void util_check_and_install_dependencies() {
     FILE *f = fopen(winscp_com, "rb");
     if (f) {
         fclose(f);
-        util_log(SEVERITY_INFO, "Dependency Check: WinSCP ready.");
+        util_log(SEVERITY_INFO, "Dependency Check: WinSCP ready (optional Windows fallback).");
         return;
     }
+
+#ifdef STELLI_USE_LIBCURL
+    /* Native preferred: still try to install WinSCP for advanced/fallback ops,
+     * but soft-fail if embed missing — core transfer does not require it. */
+    util_log(SEVERITY_INFO,
+             "Dependency Check: native libcurl enabled; WinSCP install is optional fallback.");
+#endif
 
     // Step 1: Extract embedded WinSCP.exe from our resources
     f = fopen(winscp_exe, "rb");
     if (!f) {
-        util_log(SEVERITY_INFO, "Extracting embedded WinSCP ...");
+        util_log(SEVERITY_INFO, "Extracting embedded WinSCP (optional fallback) ...");
         if (!extract_resource_to_file(IDR_WINSCP_EXE, winscp_exe)) {
+#ifdef STELLI_USE_LIBCURL
+            util_log(SEVERITY_INFO,
+                     "WinSCP not embedded/found — OK: core transfer uses native libcurl. "
+                     "Advanced WinSCP-only ops need WinSCP.exe beside the executable.");
+#else
             util_log(SEVERITY_WARNING, "Could not extract embedded WinSCP. FTP features unavailable.");
             util_log(SEVERITY_INFO, "Manual fallback: place WinSCP.exe next to StelliferumAuditor.exe");
+#endif
             return;
         }
     } else {
@@ -172,17 +207,23 @@ void util_check_and_install_dependencies() {
     }
 
     // Step 2: Create WinSCP.com (console variant) by patching the PE subsystem header
-    util_log(SEVERITY_INFO, "Creating WinSCP console interface ...");
+    util_log(SEVERITY_INFO, "Creating WinSCP console interface (optional fallback) ...");
     if (create_console_variant(winscp_exe, winscp_com)) {
         f = fopen(winscp_com, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
             long sz = ftell(f);
             fclose(f);
-            util_log(SEVERITY_INFO, "WinSCP ready: WinSCP.com (%.1f MB, console mode).",
+            util_log(SEVERITY_INFO, "WinSCP ready: WinSCP.com (%.1f MB, console mode, optional fallback).",
                      (double)sz / (1024.0 * 1024.0));
         }
     } else {
+#ifdef STELLI_USE_LIBCURL
+        util_log(SEVERITY_WARNING,
+                 "Failed to create WinSCP console variant. Core transfer still uses native libcurl.");
+#else
         util_log(SEVERITY_WARNING, "Failed to create console variant. FTP may hang.");
+#endif
     }
+#endif /* _WIN32 */
 }

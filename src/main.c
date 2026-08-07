@@ -5,6 +5,8 @@
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <sys/stat.h>
 #endif
 
 typedef struct {
@@ -515,6 +517,386 @@ headless_cleanup:
     }
 }
 
+// ============================================================================
+// Standalone transfer CLI (--ftp-download / --ftp-upload / --ftp-list)
+// Same binary, same config/ftp.ini + config/server_paths.ini as the GUI.
+// Headless: util_setup_console, no raylib ui_run. Credentials never on argv.
+// ============================================================================
+
+typedef enum {
+    FTP_CLI_NONE = 0,
+    FTP_CLI_DOWNLOAD,
+    FTP_CLI_UPLOAD,
+    FTP_CLI_LIST
+} FtpCliMode;
+
+static int path_ends_with_slash(const char *path) {
+    size_t len;
+    if (!path || !*path) return 0;
+    len = strlen(path);
+    return (path[len - 1] == '/' || path[len - 1] == '\\') ? 1 : 0;
+}
+
+/* File-like remote/local path: no trailing slash and basename has an extension. */
+static int path_looks_like_file(const char *path) {
+    const char *base;
+    const char *dot;
+    if (!path || !*path) return 0;
+    if (path_ends_with_slash(path)) return 0;
+    base = util_basename(path);
+    if (!base || !*base) return 0;
+    dot = strrchr(base, '.');
+    return (dot && dot != base && dot[1] != '\0') ? 1 : 0;
+}
+
+static int local_path_is_directory(const char *path) {
+    if (!path || !*path) return 0;
+    if (path_ends_with_slash(path)) return 1;
+#ifdef _WIN32
+    {
+        DWORD attr = GetFileAttributesA(path);
+        if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY))
+            return 1;
+    }
+#else
+    {
+        struct stat st;
+        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode))
+            return 1;
+    }
+#endif
+    return 0;
+}
+
+static void print_ftp_cli_usage(void) {
+    printf(
+        "StelliferumAuditor — standalone FTP/SFTP transfer (same binary)\n"
+        "\n"
+        "Usage:\n"
+        "  StelliferumAuditor --ftp-list [path] [--remote <path>] [--dry-run]\n"
+        "  StelliferumAuditor --ftp-download [--remote <path>] [--local <path>] [--dry-run]\n"
+        "  StelliferumAuditor --ftp-upload   [--remote <path>] [--local <path>] [--dry-run]\n"
+        "\n"
+        "Options:\n"
+        "  --ftp-list [path]   List remote directory (path optional; default REMOTE_ROOT)\n"
+        "  --ftp-download      Download remote -> local (file or recursive directory)\n"
+        "  --ftp-upload        Upload local -> remote (file or directory)\n"
+        "  --remote <path>     Remote path (default: REMOTE_ROOT from server_paths.ini)\n"
+        "  --local <path>      Local path  (default: LOCAL_ROOT from server_paths.ini)\n"
+        "  --dry-run           Print planned action; no network transfer\n"
+        "  --help, -h          Show this help\n"
+        "\n"
+        "Config (same as GUI):\n"
+        "  config/ftp.ini           HOST, PORT, USER, PASS (+ host-key keys for native SFTP)\n"
+        "  config/server_paths.ini  REMOTE_ROOT, LOCAL_ROOT, …\n"
+        "\n"
+        "Notes:\n"
+        "  • Credentials are read only from config/ftp.ini — never pass passwords on argv.\n"
+        "  • Prefer native libcurl (FTP/SFTP). WinSCP is optional Windows fallback only.\n"
+        "  • Linux does not require WinSCP.\n"
+        "  • Port 22/2222/8827 => SFTP; other ports => FTP.\n"
+        "\n"
+        "Other CLI modes (unchanged):\n"
+        "  --headless              Full download → pipeline → upload\n"
+        "  --regen | --local       Local pipeline only (no FTP); --local alone is NOT --local <path>\n"
+        "  --restore-last-upload   Restore newest pre-upload snapshot\n"
+    );
+}
+
+/* True if any standalone --ftp-* action flag is present (not --local alone). */
+static int cli_wants_ftp_mode(int argc, char **argv) {
+    int i;
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--ftp-download") == 0 ||
+            strcmp(argv[i], "--ftp-upload") == 0 ||
+            strcmp(argv[i], "--ftp-list") == 0 ||
+            strcmp(argv[i], "--ftp-help") == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static int run_ftp_cli(int argc, char **argv) {
+    FtpCliMode mode = FTP_CLI_NONE;
+    int dry_run = 0;
+    int show_help = 0;
+    int multi_mode = 0;
+    char remote_arg[MAX_PATH_LEN];
+    char local_arg[MAX_PATH_LEN];
+    char host[128] = {0};
+    char user[128] = {0};
+    char pass[128] = {0};
+    int port = 0;
+    ServerPaths paths;
+    char remote_path[MAX_PATH_LEN];
+    char local_path[MAX_PATH_LEN];
+    const char *proto;
+    int i;
+
+    remote_arg[0] = '\0';
+    local_arg[0] = '\0';
+
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--ftp-download") == 0) {
+            if (mode != FTP_CLI_NONE) multi_mode = 1;
+            mode = FTP_CLI_DOWNLOAD;
+        } else if (strcmp(argv[i], "--ftp-upload") == 0) {
+            if (mode != FTP_CLI_NONE) multi_mode = 1;
+            mode = FTP_CLI_UPLOAD;
+        } else if (strcmp(argv[i], "--ftp-list") == 0) {
+            if (mode != FTP_CLI_NONE) multi_mode = 1;
+            mode = FTP_CLI_LIST;
+            /* Optional path immediately after --ftp-list if not another flag */
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                strncpy(remote_arg, argv[++i], sizeof(remote_arg) - 1);
+                remote_arg[sizeof(remote_arg) - 1] = '\0';
+            }
+        } else if (strcmp(argv[i], "--remote") == 0) {
+            if (i + 1 >= argc) {
+                util_log(SEVERITY_ERROR, "FTP CLI: --remote requires a path argument");
+                print_ftp_cli_usage();
+                return 1;
+            }
+            strncpy(remote_arg, argv[++i], sizeof(remote_arg) - 1);
+            remote_arg[sizeof(remote_arg) - 1] = '\0';
+        } else if (strcmp(argv[i], "--local") == 0) {
+            if (i + 1 >= argc) {
+                util_log(SEVERITY_ERROR, "FTP CLI: --local requires a path argument");
+                print_ftp_cli_usage();
+                return 1;
+            }
+            strncpy(local_arg, argv[++i], sizeof(local_arg) - 1);
+            local_arg[sizeof(local_arg) - 1] = '\0';
+        } else if (strcmp(argv[i], "--dry-run") == 0) {
+            dry_run = 1;
+        } else if (strcmp(argv[i], "--help") == 0 ||
+                   strcmp(argv[i], "-h") == 0 ||
+                   strcmp(argv[i], "--ftp-help") == 0) {
+            show_help = 1;
+        } else if (strcmp(argv[i], "--headless") == 0 ||
+                   strcmp(argv[i], "--regen") == 0 ||
+                   strcmp(argv[i], "--restore-last-upload") == 0) {
+            util_log(SEVERITY_ERROR,
+                     "FTP CLI: cannot combine --ftp-* with %s (use one mode per invocation)",
+                     argv[i]);
+            return 1;
+        } else {
+            util_log(SEVERITY_ERROR, "FTP CLI: unknown argument: %s", argv[i]);
+            print_ftp_cli_usage();
+            return 1;
+        }
+    }
+
+    if (show_help) {
+        print_ftp_cli_usage();
+        return 0;
+    }
+    if (mode == FTP_CLI_NONE) {
+        print_ftp_cli_usage();
+        return 1;
+    }
+    if (multi_mode) {
+        util_log(SEVERITY_ERROR, "FTP CLI: specify only one of --ftp-download / --ftp-upload / --ftp-list");
+        return 1;
+    }
+
+    load_server_paths(&paths);
+
+    if (remote_arg[0]) {
+        strncpy(remote_path, remote_arg, sizeof(remote_path) - 1);
+        remote_path[sizeof(remote_path) - 1] = '\0';
+    } else {
+        strncpy(remote_path, paths.remote_root, sizeof(remote_path) - 1);
+        remote_path[sizeof(remote_path) - 1] = '\0';
+        if (!remote_path[0])
+            strncpy(remote_path, "/", sizeof(remote_path) - 1);
+    }
+
+    if (local_arg[0]) {
+        strncpy(local_path, local_arg, sizeof(local_path) - 1);
+        local_path[sizeof(local_path) - 1] = '\0';
+    } else {
+        strncpy(local_path, paths.local_root, sizeof(local_path) - 1);
+        local_path[sizeof(local_path) - 1] = '\0';
+        if (!local_path[0])
+            strncpy(local_path, "downloaded_mods", sizeof(local_path) - 1);
+    }
+
+    if (!load_ftp_credentials(host, sizeof(host), &port, user, sizeof(user), pass, sizeof(pass))) {
+        util_log(SEVERITY_ERROR,
+                 "FTP CLI: Missing FTP config. Copy config/ftp.ini.example to config/ftp.ini "
+                 "and set HOST/PORT/USER/PASS.");
+        return 1;
+    }
+
+    /* Never log or print PASS — only host/port/user for diagnostics. */
+    proto = (port == 22 || port == 2222 || port == 8827) ? "sftp" : "ftp";
+    util_log(SEVERITY_INFO,
+             "FTP CLI: mode=%s proto=%s host=%s port=%d user=%s dry_run=%d",
+             mode == FTP_CLI_DOWNLOAD ? "download" :
+             mode == FTP_CLI_UPLOAD   ? "upload"   : "list",
+             proto, host, port, user, dry_run);
+    util_log(SEVERITY_INFO, "FTP CLI: remote='%s' local='%s'", remote_path, local_path);
+#ifdef STELLI_USE_LIBCURL
+    if (ftp_native_backend_available()) {
+        util_log(SEVERITY_INFO, "FTP CLI: backend=native libcurl (%s)",
+                 ftp_native_curl_version_string());
+        ftp_native_reload_security_config();
+    } else {
+        util_log(SEVERITY_INFO, "FTP CLI: backend=fallback (native unavailable)");
+    }
+#else
+    util_log(SEVERITY_INFO, "FTP CLI: backend=WinSCP/legacy (STELLI_USE_LIBCURL not built)");
+#endif
+
+    if (mode == FTP_CLI_LIST) {
+        if (dry_run) {
+            printf("[dry-run] Would list remote directory: %s\n", remote_path);
+            printf("[dry-run]   %s://%s@%s:%d%s\n", proto, user, host, port, remote_path);
+            printf("[dry-run]   (password from config/ftp.ini only; not shown)\n");
+            return 0;
+        }
+
+        {
+            /* Heap: RemoteFileBrowser is large (~1.6MB); avoid stack overflow. */
+            RemoteFileBrowser *browser = (RemoteFileBrowser *)malloc(sizeof(RemoteFileBrowser));
+            int e;
+            int rc = 1;
+            if (!browser) {
+                util_log(SEVERITY_ERROR, "FTP CLI: out of memory for directory listing");
+                return 1;
+            }
+            memset(browser, 0, sizeof(*browser));
+            util_log(SEVERITY_INFO, "FTP CLI: listing %s ...", remote_path);
+            if (!ftp_list_directory(host, port, user, pass, remote_path, browser)) {
+                util_log(SEVERITY_ERROR, "FTP CLI: list failed: %s",
+                         browser->error[0] ? browser->error : "unknown error");
+                free(browser);
+                return 1;
+            }
+            printf("Remote listing: %s  (%d entries)\n",
+                   browser->current_path[0] ? browser->current_path : remote_path,
+                   browser->count);
+            printf("%-6s  %12s  %-19s  %s\n", "TYPE", "SIZE", "DATE", "NAME");
+            printf("------  ------------  -------------------  ----\n");
+            for (e = 0; e < browser->count; e++) {
+                const RemoteFileEntry *ent = &browser->entries[e];
+                printf("%-6s  %12lld  %-19s  %s\n",
+                       ent->is_directory ? "dir" : "file",
+                       (long long)ent->size,
+                       ent->date_str[0] ? ent->date_str : "-",
+                       ent->name);
+            }
+            util_log(SEVERITY_INFO, "FTP CLI: list complete (%d entries)", browser->count);
+            free(browser);
+            rc = 0;
+            return rc;
+        }
+    }
+
+    if (mode == FTP_CLI_DOWNLOAD) {
+        int as_file = path_looks_like_file(remote_path);
+        if (dry_run) {
+            if (as_file) {
+                printf("[dry-run] Would download file:\n");
+                printf("[dry-run]   remote: %s\n", remote_path);
+                printf("[dry-run]   local:  %s\n", local_path);
+            } else {
+                printf("[dry-run] Would download directory (recursive):\n");
+                printf("[dry-run]   remote: %s\n", remote_path);
+                printf("[dry-run]   local:  %s\n", local_path);
+            }
+            printf("[dry-run]   %s://%s@%s:%d  (password from config only)\n",
+                   proto, user, host, port);
+            return 0;
+        }
+
+        if (!as_file)
+            util_ensure_directory(local_path);
+        else {
+            /* Ensure parent directory of local file exists when possible */
+            char parent[MAX_PATH_LEN];
+            char *slash;
+            strncpy(parent, local_path, sizeof(parent) - 1);
+            parent[sizeof(parent) - 1] = '\0';
+            slash = strrchr(parent, '/');
+#ifdef _WIN32
+            {
+                char *bslash = strrchr(parent, '\\');
+                if (bslash && (!slash || bslash > slash)) slash = bslash;
+            }
+#endif
+            if (slash && slash != parent) {
+                *slash = '\0';
+                util_ensure_directory(parent);
+            }
+        }
+
+        if (as_file) {
+            util_log(SEVERITY_INFO, "FTP CLI: downloading file %s -> %s", remote_path, local_path);
+            if (!ftp_download_file(host, port, user, pass, remote_path, local_path)) {
+                util_log(SEVERITY_ERROR, "FTP CLI: download file failed");
+                return 1;
+            }
+        } else {
+            util_log(SEVERITY_INFO, "FTP CLI: downloading recursive %s -> %s",
+                     remote_path, local_path);
+            if (!ftp_download_recursive(host, port, user, pass, remote_path, local_path)) {
+                util_log(SEVERITY_ERROR, "FTP CLI: recursive download failed");
+                return 1;
+            }
+        }
+        util_log(SEVERITY_INFO, "FTP CLI: download complete");
+        return 0;
+    }
+
+    if (mode == FTP_CLI_UPLOAD) {
+        int as_dir = local_path_is_directory(local_path) ||
+                     (!util_file_exists(local_path) && !path_looks_like_file(local_path));
+        /* Prefer file upload when local exists as a regular file */
+        if (util_file_exists(local_path) && !local_path_is_directory(local_path))
+            as_dir = 0;
+
+        if (dry_run) {
+            if (as_dir) {
+                printf("[dry-run] Would upload directory:\n");
+            } else {
+                printf("[dry-run] Would upload file:\n");
+            }
+            printf("[dry-run]   local:  %s\n", local_path);
+            printf("[dry-run]   remote: %s\n", remote_path);
+            printf("[dry-run]   %s://%s@%s:%d  (password from config only)\n",
+                   proto, user, host, port);
+            return 0;
+        }
+
+        if (!util_file_exists(local_path) && !local_path_is_directory(local_path)) {
+            util_log(SEVERITY_ERROR, "FTP CLI: local path does not exist: %s", local_path);
+            return 1;
+        }
+
+        if (as_dir) {
+            util_log(SEVERITY_INFO, "FTP CLI: uploading directory %s -> %s",
+                     local_path, remote_path);
+            if (!ftp_upload_directory(host, port, user, pass, local_path, remote_path)) {
+                util_log(SEVERITY_ERROR, "FTP CLI: directory upload failed");
+                return 1;
+            }
+        } else {
+            util_log(SEVERITY_INFO, "FTP CLI: uploading file %s -> %s", local_path, remote_path);
+            if (!ftp_upload_file(host, port, user, pass, local_path, remote_path)) {
+                util_log(SEVERITY_ERROR, "FTP CLI: file upload failed");
+                return 1;
+            }
+        }
+        util_log(SEVERITY_INFO, "FTP CLI: upload complete");
+        return 0;
+    }
+
+    print_ftp_cli_usage();
+    return 1;
+}
+
 // Local, no-FTP regeneration: run the full swarm pipeline against the files
 // already present in LOCAL_ROOT (downloaded_mods) and write fresh files to
 // output/. No FTP download, no upload — used for local testing against a
@@ -558,7 +940,38 @@ static int run_regen(AuditorContext *ctx) {
 int main(int argc, char **argv) {
     util_init_logger();
     util_log(SEVERITY_INFO, "System Starting...");
-    
+
+    /* Global help — never open the GUI for --help / -h / --ftp-help alone. */
+    if (argc > 1 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0 ||
+                     strcmp(argv[1], "--ftp-help") == 0 || strcmp(argv[1], "/?") == 0)) {
+        util_setup_console();
+        print_ftp_cli_usage();
+        util_close_logger();
+        return 0;
+    }
+
+    /*
+     * Standalone FTP/SFTP CLI (--ftp-download / --ftp-upload / --ftp-list).
+     * Detected before AuditorContext allocation (~195MB) and before UI.
+     * Headless: util_setup_console only; never ui_run.
+     * Coexists with --headless / --regen|--local / --restore-last-upload:
+     *   --local alone (argv[1]) still means local regen; --local <path> only
+     *   applies when a --ftp-* action is present.
+     */
+    if (cli_wants_ftp_mode(argc, argv)) {
+        util_setup_console();
+        {
+            extern void util_check_and_install_dependencies(void);
+            util_check_and_install_dependencies();
+        }
+        {
+            int result = run_ftp_cli(argc, argv);
+            util_close_job_object();
+            util_close_logger();
+            return result;
+        }
+    }
+
     // [FIX] HEAP ALLOCATION
     // We allocate the massive context on the heap to prevent Stack Overflow.
     // 65,000 items * ~3KB = ~195MB. Default stack is only 1MB.
@@ -584,6 +997,8 @@ int main(int argc, char **argv) {
         return result;
     }
 
+    /* --regen and bare --local (no --ftp-*) = local pipeline only, no FTP.
+     * Note: --local <path> is handled only inside --ftp-* mode above. */
     if (argc > 1 && (strcmp(argv[1], "--regen") == 0 || strcmp(argv[1], "--local") == 0)) {
         util_setup_console();   // WIN32 subsystem has no console; allocate one for CLI
         int result = run_regen(ctx);

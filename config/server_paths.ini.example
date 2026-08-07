@@ -1,5 +1,11 @@
-# Server file targets for headless and UI downloads
+# Server file targets for headless, UI downloads, and standalone --ftp-* CLI
 # Copy values into server_paths.ini or edit that file in place.
+#
+# CLI defaults (override with --remote / --local):
+#   --ftp-list [path]     default path = REMOTE_ROOT
+#   --ftp-download        remote = REMOTE_ROOT, local = LOCAL_ROOT
+#   --ftp-upload          local  = LOCAL_ROOT,  remote = REMOTE_ROOT
+# Note: bare "--local" (no --ftp-*) still means local regen (--regen alias).
 REMOTE_ROOT=/your/ftp/root/
 REMOTE_TYPES=mpmissions/dayzOffline.chernarusplus/db/types.xml
 REMOTE_SPAWNABLE=mpmissions/dayzOffline.chernarusplus/cfgspawnabletypes.xml

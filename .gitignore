@@ -5,9 +5,14 @@
 
 # --- Build / CMake ---
 build/
+build-linux*/
 cmake_build/
 out/
 dist/
+# Local QA artifacts may contain hostnames from live dry-runs — keep logs local
+qa/**/*.log
+qa/**/*session*
+qa/**/_tmp*
 
 # --- Release packaging (local) ---
 *.zip

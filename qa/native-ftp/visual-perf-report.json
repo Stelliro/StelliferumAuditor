@@ -1,0 +1,17 @@
+{
+  "date": "2026-08-07 16:32:08",
+  "host": "DESKTOP-7A45HID",
+  "local_machine_confirmed": true,
+  "visual_passed": true,
+  "perf_passed": true,
+  "passed": true,
+  "visual_evidence": "qa/native-ftp/13-visual-build.bat.log BUILD COMPLETE + STELLI_USE_LIBCURL + ftp/sftp; qa/native-ftp/15-visual-cli-ftp-list.log EXITS=0,0,0 backend=native",
+  "perf_evidence": "qa/native-ftp/14-perf-help.log PERF_EXIT=0 PERF_OK SESSION native libcurl dry_run; help launches UI (timeout killed) but transfer CLI path timed",
+  "artifacts": [
+    "qa/native-ftp/12-visual-perf-notes.txt",
+    "qa/native-ftp/13-visual-build.bat.log",
+    "qa/native-ftp/14-perf-help.log",
+    "qa/native-ftp/15-visual-cli-ftp-list.log",
+    "qa/native-ftp/16-session-after-ftp-list.txt"
+  ]
+}
