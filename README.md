@@ -187,7 +187,7 @@ See the [example catalog](examples/items/README.md) for a full classname grid fr
 | [rlImGui](https://github.com/raylib-extras/rlImGui) | raylib backend for ImGui |
 | [WinSCP](https://winscp.net/) | SFTP/FTP scripting (portable binary, local) |
 
-More build detail: [docs/BUILD.md](docs/BUILD.md). System design: [docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md). Backlog: [docs/ROADMAP.md](docs/ROADMAP.md).
+More build detail: [docs/BUILD.md](docs/BUILD.md). System design: [docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md).
 
 ---
 
@@ -198,6 +198,26 @@ More build detail: [docs/BUILD.md](docs/BUILD.md). System design: [docs/SYSTEM_O
 | `economy_balancer.py` | Offline economy analysis / cortex |
 | `phoenix_item_scanner.py` | Item capacity / Phoenix scan helpers |
 | `fix_spawnables.py` / `validate_spawnables.py` | Spawnable maintenance utilities |
+
+---
+
+## Roadmap
+
+Work planned after the **1.0.0** baseline. Issues hold the full write-ups; this table is the living checklist.
+
+| Status | Item | Issue |
+| --- | --- | --- |
+| **Todo** | **Mod containers & mod-function loot params by tier** — Detect containers/storage from different mods; set per-mod loot parameters (nominal/min/restock/lifetime, cargo/spawnables, usage/values) that can differ by economy tier; apply via audit/export. | [#1](https://github.com/Stelliro/StelliferumAuditor/issues/1) |
+| **Todo** | **UI overhaul** — Cleaner daily workflow UI: navigation, large item/issue tables (filter/search), swarm + FTP status, safer empty states / pre-upload guards, layout polish for 1080p/1440p. | [#2](https://github.com/Stelliro/StelliferumAuditor/issues/2) |
+| **Todo** | **Better loot & shop configuration** — First-class loot policy editing (tiers, categories, mod overrides, audit explanations) plus stronger shop/trader setup (stock, pricing, categories, currencies, previews/diffs) across supported trader formats. | [#3](https://github.com/Stelliro/StelliferumAuditor/issues/3) |
+
+### Notes on the above
+
+**Mod containers / mod functions.** Global tier policy is not enough when mods add crates, bags, lockers, vehicle cargo, and custom boxes—each “function” may need its own rules per tier, then written into `types.xml` and spawnables.
+
+**UI.** Scale and clarity for multi-thousand classname economies: find items, understand pipeline state, and export/upload without digging.
+
+**Loot & shops.** Economy and market should be configured in-app (or via clear config) with previews, not only post-hoc hand edits of exported shop files.
 
 ---
 
