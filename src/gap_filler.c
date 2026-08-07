@@ -1366,7 +1366,7 @@ static bool is_item_too_large_for_container(const LootItem *item,
             util_str_contains_ci(icn, "PistolGrip") || util_str_contains_ci(icn, "PBS1"))
             return true;
         // Flags don't belong in pouches (check prefix "Flag_")
-        if (_strnicmp(icn, "Flag_", 5) == 0) return true;
+        if (util_strnicmp(icn, "Flag_", 5) == 0) return true;
         // Food/steaks/blood bags don't belong in holsters
         if (util_str_contains_ci(icn, "SteakMeat") || util_str_contains_ci(icn, "BloodBagFull") ||
             util_str_contains_ci(icn, "Bark_") || util_str_contains_ci(icn, "BakedBeansCan"))

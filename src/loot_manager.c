@@ -30,7 +30,7 @@ static bool name_contains_word(LootItem *item, const char *word) {
     size_t wlen = strlen(word);
     for (const char *p = cn; *p; p++) {
         // Case-insensitive match of `word` at position p
-        if (_strnicmp(p, word, wlen) != 0) continue;
+        if (util_strnicmp(p, word, wlen) != 0) continue;
         // Check left boundary: start of string, '_', or CamelCase transition
         if (p != cn) {
             char prev = *(p - 1);

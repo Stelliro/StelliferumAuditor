@@ -15,6 +15,8 @@
 #ifdef SEVERITY_WARNING
 #undef SEVERITY_WARNING
 #endif
+#else
+#include <strings.h> /* strcasecmp / strncasecmp on Linux/musl */
 #endif
 
 static FILE *log_file = NULL;
@@ -331,7 +333,19 @@ const char* util_severity_name(Severity sev) {
 }
 
 int util_strcasecmp(const char *a, const char *b) {
+#ifdef _WIN32
     return _stricmp(a, b);
+#else
+    return strcasecmp(a, b);
+#endif
+}
+
+int util_strnicmp(const char *a, const char *b, size_t n) {
+#ifdef _WIN32
+    return _strnicmp(a, b, n);
+#else
+    return strncasecmp(a, b, n);
+#endif
 }
 
 bool util_str_contains_ci(const char *haystack, const char *needle) {
@@ -772,7 +786,7 @@ static int count_files_recurse(const char *dir_path) {
 //   >0  = completed with a non-zero exit code
 //   -1  = failed to launch
 //   -2  = timed out (child was terminated)
-static int util_run_cmd_timeout(const char *cmdline, DWORD timeout_ms) {
+static int util_run_cmd_timeout(const char *cmdline, unsigned int timeout_ms) {
 #ifdef _WIN32
     char mutable_cmd[2048];
     strncpy(mutable_cmd, cmdline, sizeof(mutable_cmd) - 1);
@@ -795,7 +809,7 @@ static int util_run_cmd_timeout(const char *cmdline, DWORD timeout_ms) {
 
     if (!ok) return -1;
 
-    DWORD wait = WaitForSingleObject(pi.hProcess, timeout_ms);
+    DWORD wait = WaitForSingleObject(pi.hProcess, (DWORD)timeout_ms);
     int rc;
     if (wait == WAIT_TIMEOUT) {
         TerminateProcess(pi.hProcess, 1);

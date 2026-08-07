@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stddef.h>  /* size_t — required on musl/Alpine (not implied by stdint.h) */
 #include <stdbool.h>
 
 // Forward declaration (full definition in web_lookup.h)
@@ -489,7 +490,10 @@ void util_setup_console(void);                     // CLI/headless: attach paren
 void util_setup_console_quiet(void);               // CLI: no new window, no focus steal (log file only if no parent)
 void util_log(Severity level, const char *fmt, ...);
 int util_strcasecmp(const char *a, const char *b);
+int util_strnicmp(const char *a, const char *b, size_t n); /* portable _strnicmp / strncasecmp */
 bool util_str_contains_ci(const char *haystack, const char *needle);
+void util_trim(char *str);
+void util_timestamp(char *buf, size_t len);
 unsigned int util_hash_string(const char *str);
 bool util_file_exists(const char *path);
 bool util_read_ini_value(const char *path, const char *key, char *out, size_t out_len);
