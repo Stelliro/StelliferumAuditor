@@ -597,12 +597,15 @@ bool util_read_ini_value(const char *path, const char *key, char *out, size_t ou
     if (!path || !key || !out || out_len == 0) return false;
     FILE *f = fopen(path, "r");
     if (!f) return false;
-    char line[512];
+    char line[1024]; /* wide enough for long PASS= lines without truncation */
     size_t key_len = strlen(key);
     bool found = false;
     while (fgets(line, sizeof(line), f)) {
         size_t len = strlen(line);
-        if (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[len - 1] = '\0';
+        /* Strip all trailing CR/LF (not just one) so passwords never keep '\\r'. */
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+            line[--len] = '\0';
+        }
         if (strncmp(line, key, key_len) == 0 && line[key_len] == '=') {
             strncpy(out, line + key_len + 1, out_len - 1);
             out[out_len - 1] = '\0';

@@ -70,6 +70,10 @@ config/ftp.ini
 **/ftp.ini
 !**/ftp.ini.example
 !config/ftp.ini.example
+# Login field diagnostic dump (--ftp-export-login) — contains real secrets
+config/ftp.login_export.txt
+**/ftp.login_export.txt
+config/known_hosts
 
 # Live server path overrides (host-specific roots, mission paths)
 config/server_paths.ini
